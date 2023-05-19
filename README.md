@@ -108,7 +108,7 @@ cd ..
 
 
 ### 第三步，推理
-1. 目前已经有大佬开源了推理脚本，你可以直接用现成的。你只需要做将它提供的编译好的tensorRT文件，换成你编译好的tensorRT文件所在路径即可。
+1. 目前已经有大佬开源了推理脚本，你可以直接用现成的。你只需要做将它提供的编译好的tensorRT文件，换成你编译好的tensorRT文件所在路径即可，目前导出的TensorRT路径在项目的`models/chatglm6b-bs1.plan`路径。
 - 大佬开源的推理脚本地址：[地址](https://huggingface.co/TMElyralab/lyraChatGLM), 该推理脚本配套使用教程：[地址](https://www.http5.cn/index.php/archives/19/)
 
 
