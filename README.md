@@ -78,7 +78,7 @@ python3 run_onnx.py
 ```bash
 python3 run_onnx2.py
 ```
-- 一般来说，还需要做pytorch和onnx输出情况差异对比，由于本次仅导出了fp16的文件，一般问题不大，所以这里省略该步骤。
+- 一般来说，还需要做pytorch和onnx输出情况差异对比，由于本次仅导出了fp32的文件，一般问题不大，所以这里省略该步骤。
 4. 返回上层目录
 ```bash
 cd ..
