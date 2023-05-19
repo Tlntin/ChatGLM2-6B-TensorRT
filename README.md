@@ -113,8 +113,8 @@ cd ..
 
 
 ### 待做（画饼）
-- [ ]自己实现一个推理方案，支持python/c++
-- [ ]将FastTransformer编译为tensorRT的一个插件，以实现更快的加速方案。
+- [ ] 自己实现一个推理方案，支持python/c++
+- [ ] 将FastTransformer编译为tensorRT的一个插件，以实现更快的加速方案。
 
 
 ### 其他
