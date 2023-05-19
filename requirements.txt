@@ -1,0 +1,18 @@
+protobuf
+transformers==4.27.1
+icetk
+# cpm_kernels
+torch>=1.10
+# gradio
+# mdtex2html
+sentencepiece
+accelerate
+# tensorrt
+colored
+nvidia-pyindex
+polygraphy
+# onnx_graphsurgeon
+# onnxsim
+# pycuda
+onnx
+onnxruntime

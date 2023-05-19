@@ -1,0 +1,7 @@
+chatglm_6b
+onnx_output/
+models/
+*/__pycache__/
+__pycache__/
+.vscode/
+.idea/
