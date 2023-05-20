@@ -162,8 +162,13 @@ network_definition = get_network_definition(onnx_network)
 print(network_definition)
 print("=============tensorRT inference config =====================")
 print(trt_inference_config)
-
-print("==tensorRT engine begin compile, maybe you need wait 10-25 minute ==")
+if builder_optimization_level == 3:
+    print("==tensorRT engine begin compile, maybe you need wait 10-25 minute ==")
+elif builder_optimization_level == 5:
+    print("==tensorRT engine begin compile, maybe you need wait 30-60 minute ==")
+else:
+    print("==tensorRT engine begin compile, maybe you need wait a moment ==")
+    
 trt_engine = engine_from_network(network_definition, trt_inference_config)
 print(trt_engine)
 
