@@ -1,7 +1,14 @@
 import tensorrt as trt
+import os
+
+
+now_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(now_dir)
+model_dir = os.path.join(project_dir, "models")
+trt_enginge_path = os.path.join(model_dir, "chatglm6b-bs1.plan")
 
 # Load TensorRT Engine
-with open("models/chatglm6b-bs1.plan", 'rb') as f, trt.Runtime(trt.Logger(trt.Logger.WARNING)) as runtime:
+with open(trt_enginge_path, 'rb') as f, trt.Runtime(trt.Logger(trt.Logger.WARNING)) as runtime:
     engine = runtime.deserialize_cuda_engine(f.read())
 
 # print input and output

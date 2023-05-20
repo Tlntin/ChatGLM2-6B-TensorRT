@@ -6,13 +6,17 @@ from polygraphy.backend.trt import (
     save_engine,
     Profile,
 )
+from itertools import tee
 from polygraphy.backend.trt import CreateConfig
-from tensorrt import MemoryPoolType
+from tensorrt import MemoryPoolType, PreviewFeature
 
 
-batch_size = 1
+batch_size = 2
 max_length  = 512
 opt_length = max_length // 2
+force_use_fp16 = True
+# default 3, max 5, 5 is the best but need more GPU memory and time
+builder_optimization_level = 3
 
 
 
@@ -45,7 +49,6 @@ for layer_idx in range(28):
             opt=(0, batch_size, 32, 128),
             max=(0, batch_size, 32, 128),
         )
-
 # ----profile2 when past_key_values is not None----
 profile2 = Profile().add(
     "input_ids",
@@ -80,10 +83,38 @@ profiles = [profile1, profile2]
 
 
 def get_network_definition(network_definition):
+    def pairwise(iterable):
+        a, b = tee(iterable)
+        next(b, None)
+        return zip(a, b)
+    
     num_layers = network_definition[1].num_layers 
-    for i in range(num_layers):
+    indices = list(range(num_layers))
+    for i, i_next in pairwise(indices):
         layer = network_definition[1].get_layer(i)
+        l_next = network_definition[1].get_layer(i_next)
+
+        if not all([
+            layer.get_output(i).is_execution_tensor
+            for i in range(layer.num_outputs)
+        ]):
+            continue
+
+        if layer.num_outputs > 0 and layer.get_output_type(0) != trt.float32:
+            continue
+
+        if layer.type == trt.LayerType.ELEMENTWISE and l_next.type == trt.LayerType.REDUCE:
+            layer.__class__ = getattr(trt, "IElementWiseLayer")
+            if layer.op == trt.ElementWiseOperation.POW:
+                layer.precision = trt.float32
+                layer.set_output_type(0, trt.float32)
+
+            l_next.precision = trt.float32
+            l_next.set_output_type(0, trt.float32)
+            continue
         # need GPU memory 16G
+        if not force_use_fp16:
+            continue
         for i in range(layer.num_outputs):
             if layer.get_output_type(0) == trt.float32: 
                 layer.precision = trt.float16
@@ -98,9 +129,11 @@ model_dir = os.path.join(project_dir, "models")
 if not os.path.exists(model_dir):
     os.mkdir(model_dir)
 tensorrt_engine_path = os.path.join(model_dir, "chatglm6b-bs1.plan")
-
-
-#preview_features = [PreviewFeature.PROFILE_SHARING_0806]
+preview_features = [
+    PreviewFeature.PROFILE_SHARING_0806,
+    PreviewFeature.FASTER_DYNAMIC_SHAPES_0805,
+    PreviewFeature.DISABLE_EXTERNAL_TACTIC_SOURCES_FOR_CORE_0805
+]
 
 
 
@@ -111,10 +144,10 @@ trt_inference_config = CreateConfig(
                 profiles=profiles,
                 precision_constraints="obey",
                 # precision_constraints="prefer",
-                #preview_features=preview_features,
+                preview_features=preview_features,
                 #sparse_weights=True,
                 profiling_verbosity=trt.ProfilingVerbosity.DETAILED,
-                builder_optimization_level=5,
+                builder_optimization_level=builder_optimization_level,
             )
 
 print("loading onnx model from ", input_fpath)
@@ -125,6 +158,7 @@ network_definition = get_network_definition(onnx_network)
 print(network_definition)
 print("=============tensorRT inference config =====================")
 print(trt_inference_config)
+
 print("==tensorRT engine begin compile, maybe you need wait 10-25 minute ==")
 trt_engine = engine_from_network(network_definition, trt_inference_config)
 print(trt_engine)
