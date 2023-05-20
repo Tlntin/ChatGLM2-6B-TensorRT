@@ -15,9 +15,12 @@ batch_size = 1
 max_length  = 512
 opt_length = max_length // 2
 # if use force use fp16, may reduce the accuracy and memory usage
-force_use_fp16 = True
+force_use_fp16 = False
 # default 3, max 5, 5 is the best but need more GPU memory and time
 builder_optimization_level = 5
+# lower memory GPU can try this option with True \
+# it can use CPU memory/CPU compute to run some layers, but may reduce the speed
+all_gpu_fallback = False
 
 if batch_size > 1 and builder_optimization_level != 5:
     raise Exception("batch size > 1, please use builder_optimization_level = 5")
@@ -152,6 +155,7 @@ trt_inference_config = CreateConfig(
                 #sparse_weights=True,
                 profiling_verbosity=trt.ProfilingVerbosity.DETAILED,
                 builder_optimization_level=builder_optimization_level,
+                allow_gpu_fallback=all_gpu_fallback,
             )
 
 print("loading onnx model from ", input_fpath)
