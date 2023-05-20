@@ -132,7 +132,7 @@ input_fpath = os.path.join(project_dir, "onnx_output", "chatglm_6b.onnx")
 model_dir = os.path.join(project_dir, "models")
 if not os.path.exists(model_dir):
     os.mkdir(model_dir)
-tensorrt_engine_path = os.path.join(model_dir, "chatglm6b-bs1.plan")
+tensorrt_engine_path = os.path.join(model_dir, f"chatglm6b-bs{batch_size}.plan")
 preview_features = [
     PreviewFeature.PROFILE_SHARING_0806,
     PreviewFeature.FASTER_DYNAMIC_SHAPES_0805,
@@ -168,3 +168,5 @@ trt_engine = engine_from_network(network_definition, trt_inference_config)
 print(trt_engine)
 
 save_engine(trt_engine, tensorrt_engine_path)
+print("==tensorRT engine compile done==")
+print("tensorRT engine save to ", tensorrt_engine_path)
