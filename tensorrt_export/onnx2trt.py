@@ -12,14 +12,15 @@ from tensorrt import MemoryPoolType, PreviewFeature
 
 # default is 1, if you want to use more batch size, use TensorRT8.6.0, not TensorRT8.6.1
 batch_size = 1
-if batch_size > 1 and trt.__version__ != "8.6.0":
-    raise Exception("batch size > 1, please use TensorRT8.6.0")
 max_length  = 512
 opt_length = max_length // 2
 # if use force use fp16, may reduce the accuracy and memory usage
 force_use_fp16 = True
 # default 3, max 5, 5 is the best but need more GPU memory and time
 builder_optimization_level = 3
+
+if batch_size > 1 and builder_optimization_level != 5:
+    raise Exception("batch size > 1, please use builder_optimization_level = 5")
 
 
 
