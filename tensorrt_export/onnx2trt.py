@@ -1,5 +1,6 @@
 import tensorrt as trt
 import os
+import time
 from polygraphy.backend.trt import (
     network_from_onnx_path,
     engine_from_network,
@@ -178,4 +179,13 @@ print(trt_engine)
 
 save_engine(trt_engine, tensorrt_engine_path)
 print("==tensorRT engine compile done==")
-print("tensorRT engine save to ", tensorrt_engine_path)
+# rename tensorRT engine file with file size
+print("wait 10 senconds")
+time.sleep(10)
+file_size = round(os.path.getsize(tensorrt_engine_path) / (1024 ** 3), 1)
+print(f"tensorRT engine file size is {file_size}G")
+new_trt_path = os.path.join(
+    model_dir, f"chatglm6b-bs{batch_size}_{file_size}G.plan"
+)
+os.rename(tensorrt_engine_path, new_trt_path)
+print("tensorRT engine save to ", new_trt_path)
