@@ -185,7 +185,7 @@ time.sleep(10)
 file_size = round(os.path.getsize(tensorrt_engine_path) / (1024 ** 3), 1)
 print(f"tensorRT engine file size is {file_size}G")
 new_trt_path = os.path.join(
-    model_dir, f"chatglm6b-bs{batch_size}_{file_size}G.plan"
+    model_dir, f"chatglm6b-bs{batch_size}-{file_size}G.plan"
 )
 os.rename(tensorrt_engine_path, new_trt_path)
 print("tensorRT engine save to ", new_trt_path)
