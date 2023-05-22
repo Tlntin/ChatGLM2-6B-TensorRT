@@ -1,15 +1,16 @@
 import onnxruntime as ort
-from transformers import AutoTokenizer
+# from transformers import AutoTokenizer
 import numpy as np
 import os
 
 os.environ["export ORT_LOG_LEVEL"] = "VERBOSE"
 
 
-tokenizer = AutoTokenizer.from_pretrained("../chatglm_6b", trust_remote_code=True)
+#  tokenizer = AutoTokenizer.from_pretrained("../chatglm_6b", trust_remote_code=True)
 
 onnx_path = "../onnx_output/chatglm_6b.onnx"
-sess = ort.InferenceSession(onnx_path)
+providers = ["CPUExecutionProvider"]
+sess = ort.InferenceSession(onnx_path, providers=providers)
 input_text = "你好"
 # input_ids = tokenizer([input_text], return_tensors="pt")["input_ids"].data.numpy()
 # print(input_ids)

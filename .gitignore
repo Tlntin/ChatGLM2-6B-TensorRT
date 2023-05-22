@@ -1,5 +1,6 @@
 chatglm_6b
 onnx_output/
+new_onnx_output/
 onnx_output2/
 models/
 */__pycache__/

@@ -16,3 +16,4 @@ polygraphy
 # pycuda
 onnx
 onnxruntime
+# onnxruntime-gpu

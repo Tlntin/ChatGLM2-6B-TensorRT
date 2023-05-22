@@ -1,8 +1,8 @@
 ## 使用教程
 ### 准备工作
-1. pytorch->onnx, 这个阶段需要40-64G左右内存。
-2. onnx->tensorRT, 这个阶段需要大量显存(目测大概16G-22G左右)以及大量内存（大概70G)，所以显卡要求最低24G显存，推荐32G显存, 内存不够的可以加swap。
-3. TensorRT推理阶段，比原版高一些，大概14-17G左右。
+1. pytorch->onnx, 这个阶段需要40-64G左右内存, 24G以上显存（可选，推荐有）。
+2. onnx->tensorRT, 这个阶段需要大量显存(目测大概17G左右)以及大量内存（大概70G)，所以显卡要求最低24G显存, 内存不够的可以加swap。
+3. TensorRT推理阶段，基本和原版一样，13G左右。
 4. 安装好了docker与nvidia-docker（可选, 建议搞一个，这样可以节省配环境的时间）
 5. 下载huggingface的ChatGLM-6b的权重到本项目根目录，然后将`-`替换为`_`即可, 这一步是为了方便debug。
 ```bash
@@ -30,6 +30,12 @@ docker run --gpus all \
 ```bash
 pip install -r requirements.txt
 ```
+ 8. 推荐使用cuda 11.8以及以上，结合lazy load技术，可以加快推理以及节省显存。[链接](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#lazy-loading)
+ - 使用方法
+ ```bash
+ # 建议写到~/.bashrc
+ export CUDA_MODULE_LOADINGLAZY=LAZY
+ ```
 
 ### 第一步：将pytorch导出成onnx
 1. 修改chatGLM模型结构，单独改`chatglm_6b/modeling_chatglm.py` 就行了。
@@ -61,20 +67,23 @@ cp onnx_export/modeling_chatglm.py chatglm_6b/modeling_chatglm.py
 cd onnx_export
 ```
 
-3. 执行export2onnx.py文件。
+3. 执行export2onnx.py文件
 ```bash
-# for GPU显存 < 32G, 该操作会利用CPU导出fp32格式的onnx
-python3 export2onnx_cpu.py
+# 强烈推荐
+# for GPU显存 >= 24G, 该操作会利用GPU导出fp16的onnx文件, 相对来说更为推荐这个, 如果是刚好24G的显卡，可能会爆显存。
+python export2onnx_fp16.py
 
-# for GPU显存 >= 32G, 该操作会利用GPU导出fp16的onnx文件, 相对来说更为推荐这个
-python export2onnx_cuda.py
+# 这个导出的onnx比较大，并且转成的tensorRT也会很大
+# for GPU显存 < 24G, 该操作会利用CPU导出fp32格式的onnx
+python3 export2onnx_fp32.py
+
 ```
 - 问题：这个输入输出怎么来的？
 - 回答：其实我们加载的模型是`configuration_chatglm.py`的`ChatGLMForConditionalGeneration`类。虽然python版貌似执行的model.chat(),但是实际核心还是pytorch的model(xxx)，也就是调用的forward方法。所以可以直接在`ChatGLMForConditionalGeneration`类的forward方法那里打断点，就可以获取文件的输入参数了。foword函数大概在1174行，可以将断点打在最后的1220行，`if not return_dict`这里。然后调用原版的chat函数，进入debug模式，就可以看到函数的输入参数是啥了。注意：这个入参有两种情况，一种是past_key_values为None,一种是28x2个(past_seq_len, batch_size, 32, 128)的tensor。这里我取的是前一种进行导出onnx, 其实后面一种也可以,为了兼容tensort,我past_key_values将None数值替换成了28x2个`torch.zeros(0, 1, 32, 128)`
 - 问题：opset_version选择18？
 - 回答：因为最近onnx/tensorRT支持了layerNorm的实现，这个最低要求是17,而目前最高就是18/19,所以我选择18，当然你也可以选择17或者19试试。
 
-4. 验证onnx文件
+4. 验证onnx文件(目前fp16导出的onnx验证不通过，需要修改, fp32正常)
 - 因为我们导出onnx的时候，input_ids的shape是[1, 4], 为了验证其他的shape是否ok,我就编造了一个shape为[1, 5] input_id进行输入，观察模型结构是否正常。
 ```bash
 python3 run_onnx.py

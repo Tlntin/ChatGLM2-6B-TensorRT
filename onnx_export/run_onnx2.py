@@ -6,7 +6,8 @@ os.environ["export ORT_LOG_LEVEL"] = "VERBOSE"
 
 
 onnx_path = "../onnx_output/chatglm_6b.onnx"
-sess = ort.InferenceSession(onnx_path)
+providers = ["CPUExecutionProvider"]
+sess = ort.InferenceSession(onnx_path, providers=providers)
 input_ids = np.array([[19316]], dtype=np.int64)
 position_ids = np.array([[[2], [2]]], dtype=np.int64)
 attention_mask = np.array([[[[True]]]], dtype=np.bool_)
