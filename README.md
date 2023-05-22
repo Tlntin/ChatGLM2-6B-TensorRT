@@ -65,9 +65,10 @@ cd onnx_export
 ```bash
 python3 export2onnx.py
 ```
-- 问题来了：这个输入输出怎么来的？
+- 问题：这个输入输出怎么来的？
 - 回答：其实我们加载的模型是`configuration_chatglm.py`的`ChatGLMForConditionalGeneration`类。虽然python版貌似执行的model.chat(),但是实际核心还是pytorch的model(xxx)，也就是调用的forward方法。所以可以直接在`ChatGLMForConditionalGeneration`类的forward方法那里打断点，就可以获取文件的输入参数了。foword函数大概在1174行，可以将断点打在最后的1220行，`if not return_dict`这里。然后调用原版的chat函数，进入debug模式，就可以看到函数的输入参数是啥了。注意：这个入参有两种情况，一种是past_key_values为None,一种是28x2个(past_seq_len, batch_size, 32, 128)的tensor。这里我取的是前一种进行导出onnx, 其实后面一种也可以,为了兼容tensort,我past_key_values将None数值替换成了28x2个`torch.zeros(0, 1, 32, 128)`
-- 为啥opset_version选择18？因为最近onnx/tensorRT支持了layerNorm的实现，这个最低要求是17,而目前最高就是18/19,所以我选择18，当然你也可以选择17或者19试试。
+- 问题：opset_version选择18？
+- 回答：因为最近onnx/tensorRT支持了layerNorm的实现，这个最低要求是17,而目前最高就是18/19,所以我选择18，当然你也可以选择17或者19试试。
 
 4. 验证onnx文件
 - 因为我们导出onnx的时候，input_ids的shape是[1, 4], 为了验证其他的shape是否ok,我就编造了一个shape为[1, 5] input_id进行输入，观察模型结构是否正常。
@@ -118,15 +119,10 @@ cd ..
 
 
 ### 其他
-- 貌似自tensorRT8.6.1开始，同一个tensorRT版本，不同架构/算力，可以用同一份编译好的tensorRT Engine,也就是说，如果有人用TensorRT8.6.1编译好了共享给你的话，前两步理论上可以省略（不过只支持30系/40系，并且存在一定精度损失）。
+- 貌似自tensorRT8.6.1开始，同一个tensorRT版本，不同架构/算力，可以用同一份编译好的tensorRT Engine,也就是说，如果有人用TensorRT8.6.1编译好了共享给你的话，前两步理论上可以省略（不过只支持英伟达30系/40系显卡，并且存在一定精度损失）。
 
 
 ### 参考链接
 - https://github.com/THUDM/ChatGLM-6B
 - https://huggingface.co/TMElyralab/lyraChatGLM
 - https://github.com/K024/chatglm-q
-
-
-
-
-

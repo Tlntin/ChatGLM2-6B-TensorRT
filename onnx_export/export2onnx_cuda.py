@@ -2,27 +2,31 @@ import os
 # from transformers import AutoTokenizer, AutoModel, AutoConfig
 import torch
 import sys
-sys.path.append("../")
+now_dir = os.path.dirname(os.path.abspath(__file__))
+project_dir = os.path.dirname(now_dir)
+sys.path.append(project_dir)
 from chatglm_6b.modeling_chatglm import ChatGLMForConditionalGeneration
 from chatglm_6b.tokenization_chatglm import ChatGLMTokenizer
 
-# tokenizer = AutoTokenizer.from_pretrained("chatglm_6b", trust_remote_code=True)
-# model = AutoModel.from_pretrained("chatglm_6b", trust_remote_code=True).half().cuda()
-# model.eval()
-tokenizer = ChatGLMTokenizer.from_pretrained("../chatglm_6b")
-model = ChatGLMForConditionalGeneration.from_pretrained("../chatglm_6b").float().cpu()
 
+model_dir = os.path.join(project_dir, "chatglm_6b")
+tokenizer = ChatGLMTokenizer.from_pretrained(model_dir)
+model = ChatGLMForConditionalGeneration.from_pretrained(model_dir)
+model = model.half().cuda()
+model.eval()
+print(model)
+print(model.parameters())
 
 input_text = "."
 response, history = model.chat(tokenizer, input_text, history=[])
 print(response)
-model = model.cpu().float()
-model.eval()
+# model = model.cpu().float()
+# model.eval()
 
-device = 'cpu'
+device = 'cuda'
 input_ids = tokenizer([input_text], return_tensors="pt")["input_ids"]
 input_ids = input_ids.to(device=device)
-position_ids = torch.tensor([[[0, 1, 2, 2], [0, 0, 0, 1]]], device=device)
+position_ids = torch.tensor([[[0, 1, 2, 2], [0, 0, 0, 1]]], device=device).int()
 attention_mask = torch.tensor(
     [[[
         [False, False, False, True],
@@ -31,15 +35,15 @@ attention_mask = torch.tensor(
         [False, False, False, False]
     ]]], device=device, dtype=torch.bool
 )
-# output_dict = model.forward(
-#     input_ids=input_ids,
-#     position_ids=position_ids,
-#     attention_mask=attention_mask,
-# )
-# past_key_values = output_dict["past_key_values"]
-# print("one past_key_shape", past_key_values[0][0].shape)
+output_dict = model.forward(
+    input_ids=input_ids,
+    position_ids=position_ids,
+    attention_mask=attention_mask,
+)
+_past_key_values = output_dict["past_key_values"]
+print("one past_key_shape", _past_key_values[0][0].shape)
 past_key_values = [
-    [torch.zeros(0, 1, 32, 128) for _ in range(2)]
+    [torch.zeros(0, 1, 32, 128, device=device).half() for _ in range(2)]
     for _ in range(28)
 ]
 if not os.path.exists("../onnx_output"):
@@ -75,17 +79,14 @@ for layer_idx in range(model.config.num_layers):
             1: "batch_size", 0: "past_seq_length"
         },
     })
-print("=======input_names=======")
-print(input_names)
-print("=======dynamic_axes=========")
-print(dynamic_axes)
 
-torch.onnx.export(
-    model, (input_ids,position_ids,attention_mask, past_key_values),
-    "../onnx_output/chatglm_6b.onnx",
-    opset_version=18,
-    input_names=input_names,
-    output_names=output_names,
-    dynamic_axes=dynamic_axes,
-    training=torch.onnx.TrainingMode.EVAL,
-)
+with torch.no_grad():
+    torch.onnx.export(
+        model, (input_ids,position_ids,attention_mask, past_key_values),
+        "../onnx_output/chatglm_6b.onnx",
+        opset_version=18,
+        input_names=input_names,
+        output_names=output_names,
+        dynamic_axes=dynamic_axes,
+        training=torch.onnx.TrainingMode.EVAL,
+    )
