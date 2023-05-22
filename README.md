@@ -63,7 +63,11 @@ cd onnx_export
 
 3. 执行export2onnx.py文件。
 ```bash
-python3 export2onnx.py
+# for GPU显存 < 32G, 该操作会利用CPU导出fp32格式的onnx
+python3 export2onnx_cpu.py
+
+# for GPU显存 >= 32G, 该操作会利用GPU导出fp16的onnx文件, 相对来说更为推荐这个
+python export2onnx_cuda.py
 ```
 - 问题：这个输入输出怎么来的？
 - 回答：其实我们加载的模型是`configuration_chatglm.py`的`ChatGLMForConditionalGeneration`类。虽然python版貌似执行的model.chat(),但是实际核心还是pytorch的model(xxx)，也就是调用的forward方法。所以可以直接在`ChatGLMForConditionalGeneration`类的forward方法那里打断点，就可以获取文件的输入参数了。foword函数大概在1174行，可以将断点打在最后的1220行，`if not return_dict`这里。然后调用原版的chat函数，进入debug模式，就可以看到函数的输入参数是啥了。注意：这个入参有两种情况，一种是past_key_values为None,一种是28x2个(past_seq_len, batch_size, 32, 128)的tensor。这里我取的是前一种进行导出onnx, 其实后面一种也可以,为了兼容tensort,我past_key_values将None数值替换成了28x2个`torch.zeros(0, 1, 32, 128)`
