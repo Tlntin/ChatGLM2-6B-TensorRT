@@ -2,7 +2,7 @@ protobuf
 transformers==4.27.1
 icetk
 # cpm_kernels
-torch>=1.10
+torch>=2.0.0
 # gradio
 # mdtex2html
 sentencepiece
@@ -14,6 +14,6 @@ polygraphy
 # onnx_graphsurgeon
 # onnxsim
 # pycuda
-onnx
-onnxruntime
+onnx>=1.13.0
+onnxruntime>=1.13.0
 # onnxruntime-gpu
