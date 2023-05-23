@@ -1,7 +1,7 @@
 ## 使用教程
 ### 准备工作
-1. pytorch->onnx, 这个阶段需要40-64G左右内存, 24G以上显存（可选，推荐有）。
-2. onnx->tensorRT, 这个阶段需要大量显存(目测大概17G左右)以及大量内存（大概70G)，所以显卡要求最低24G显存, 内存不够的可以加swap。
+1. pytorch->onnx, 这个阶段需要40-64G左右内存, 24G以上显存（可选，推荐有）, 推荐32G显存。
+2. onnx->tensorRT, 这个阶段需要大量显存(目测大概17G左右)以及大量内存（大概70G)，所以显卡要求最低24G显存,推荐32G显存， 内存不够的可以加swap。
 3. TensorRT推理阶段，基本和原版一样，13G左右。
 4. 安装好了docker与nvidia-docker（可选, 建议搞一个，这样可以节省配环境的时间）
 5. 下载huggingface的ChatGLM-6b的权重到本项目根目录，然后将`-`替换为`_`即可, 这一步是为了方便debug。
@@ -10,8 +10,67 @@ git clone https://huggingface.co/THUDM/chatglm-6b.git
 mv chatglm-6b chatglm_6b
 ```
 6. 关于tensorRT环境。
-- 选择1：本机安装，开发环境使用，目前推荐最新的TensorRT8.6.1+cuda11.8+pytorch2.0
-- 选择2：Docker安装，生产环境使用，可以用英伟达官方容器，用下面这个命令直接拉镜像。
+- 最低版本要求：8.6.0
+1. 选择1：pypi安装
+2. 选择2（推荐）：本机安装，开发环境使用，目前推荐最新的TensorRT8.6.1+cuda11.8+cudnn8.9.x+pytorch2.0, cuda用.run格式包安装，cudnn和TensorRT用tar压缩包安装。
+- 安装cudnn示例
+```bash
+tar -xvf cudnn-linux-x86_64-8.9.1.23_cuda11-archive.tar.xz
+cd cudnn-linux-x86_64-8.9.1.23_cuda11-archive
+sudo cp -r lib/* /usr/local/cuda/lib64/
+sudo cp -r include/* /usr/local/cuda/include/
+```
+- 安装tensorRT示例
+```bash
+tar -zxvf TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-11.8.tar.gz
+cd TensorRT-8.6.1.6
+sudo cp bin/* /usr/local/cuda/bin
+sudo cp -r lib/* /usr/local/cuda/lib64
+sudo cp include/* /usr/local/cuda/include
+
+# 安装TensorRT中附带的python包
+cd python
+# 我的是python3.10,选择python3.10对应的python包
+pip install tensorrt-8.6.1-cp310-none-linux_x86_64.whl
+pip install tensorrt_dispatch-8.6.1-cp310-none-linux_x86_64.whl
+pip install tensorrt_lean-8.6.1-cp310-none-linux_x86_64.whl
+
+# 返回上一级目录
+cd ..
+
+# 进入onnx_graphsurgeon
+cd onnx_graphsurgeon
+pip install onnx_graphsurgeon-0.3.12-py2.py3-none-any.whl
+
+# 返回上一级目录
+cd ../..
+
+```
+- 刷新lib库
+```bash
+sudo ldconfig
+```
+
+- 确认cudnn可以被搜索到
+```bash
+sudo ldconfig -v | grep libcudnn
+
+# 搜索结果长下面这样
+# libcudnn.so.8 -> libcudnn.so.8.9.1
+# ...
+```
+
+- 确认TensorRT库的nvinfer可以被搜索到
+```bash
+sudo ldconfig -v | grep libnvinfer
+
+# 搜索结果长下面这样
+# libnvinfer.so.8 -> libnvinfer.so.8.6.1
+# libnvinfer_plugin.so.8 -> libnvinfer_plugin.so.8.6.1
+# ...
+```
+
+3. 选择3：Docker安装，生产环境使用，可以用英伟达官方容器，用下面这个命令直接拉镜像。
 ```bash
 # 拉镜像
 docker pull nvcr.io/nvidia/pytorch:23.04-py3
