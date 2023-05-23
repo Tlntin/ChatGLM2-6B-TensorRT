@@ -11,79 +11,79 @@ mv chatglm-6b chatglm_6b
 ```
 6. 关于tensorRT环境。
 - 最低版本要求：8.6.0
-1. 选择1：pypi安装
-2. 选择2（推荐）：本机安装，开发环境使用，目前推荐最新的TensorRT8.6.1+cuda11.8+cudnn8.9.x+pytorch2.0, cuda用.run格式包安装，cudnn和TensorRT用tar压缩包安装。
-- 安装cudnn示例
-```bash
-tar -xvf cudnn-linux-x86_64-8.9.1.23_cuda11-archive.tar.xz
-cd cudnn-linux-x86_64-8.9.1.23_cuda11-archive
-sudo cp -r lib/* /usr/local/cuda/lib64/
-sudo cp -r include/* /usr/local/cuda/include/
-```
-- 安装tensorRT示例
-```bash
-tar -zxvf TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-11.8.tar.gz
-cd TensorRT-8.6.1.6
-sudo cp bin/* /usr/local/cuda/bin
-sudo cp -r lib/* /usr/local/cuda/lib64
-sudo cp include/* /usr/local/cuda/include
+    1. 选择1：pypi安装
+    2. 选择2（推荐）：本机安装，开发环境使用，目前推荐最新的TensorRT8.6.1+cuda11.8+cudnn8.9.x+pytorch2.0, cuda用.run格式包安装，cudnn和TensorRT用tar压缩包安装。
+        - 安装cudnn示例
+        ```bash
+        tar -xvf cudnn-linux-x86_64-8.9.1.23_cuda11-archive.tar.xz
+        cd cudnn-linux-x86_64-8.9.1.23_cuda11-archive
+        sudo cp -r lib/* /usr/local/cuda/lib64/
+        sudo cp -r include/* /usr/local/cuda/include/
+        ```
+        - 安装tensorRT示例
+        ```bash
+        tar -zxvf TensorRT-8.6.1.6.Linux.x86_64-gnu.cuda-11.8.tar.gz
+        cd TensorRT-8.6.1.6
+        sudo cp bin/* /usr/local/cuda/bin
+        sudo cp -r lib/* /usr/local/cuda/lib64
+        sudo cp include/* /usr/local/cuda/include
 
-# 安装TensorRT中附带的python包
-cd python
-# 我的是python3.10,选择python3.10对应的python包
-pip install tensorrt-8.6.1-cp310-none-linux_x86_64.whl
-pip install tensorrt_dispatch-8.6.1-cp310-none-linux_x86_64.whl
-pip install tensorrt_lean-8.6.1-cp310-none-linux_x86_64.whl
+        # 安装TensorRT中附带的python包
+        cd python
+        # 我的是python3.10,选择python3.10对应的python包
+        pip install tensorrt-8.6.1-cp310-none-linux_x86_64.whl
+        pip install tensorrt_dispatch-8.6.1-cp310-none-linux_x86_64.whl
+        pip install tensorrt_lean-8.6.1-cp310-none-linux_x86_64.whl
 
-# 返回上一级目录
-cd ..
+        # 返回上一级目录
+        cd ..
 
-# 进入onnx_graphsurgeon
-cd onnx_graphsurgeon
-pip install onnx_graphsurgeon-0.3.12-py2.py3-none-any.whl
+        # 进入onnx_graphsurgeon
+        cd onnx_graphsurgeon
+        pip install onnx_graphsurgeon-0.3.12-py2.py3-none-any.whl
 
-# 返回上一级目录
-cd ../..
+        # 返回上一级目录
+        cd ../..
 
-```
-- 刷新lib库
-```bash
-sudo ldconfig
-```
+        ```
+        - 刷新lib库
+        ```bash
+        sudo ldconfig
+        ```
 
-- 确认cudnn可以被搜索到
-```bash
-sudo ldconfig -v | grep libcudnn
+        - 确认cudnn可以被搜索到
+        ```bash
+        sudo ldconfig -v | grep libcudnn
 
-# 搜索结果长下面这样
-# libcudnn.so.8 -> libcudnn.so.8.9.1
-# ...
-```
+        # 搜索结果长下面这样
+        # libcudnn.so.8 -> libcudnn.so.8.9.1
+        # ...
+        ```
 
-- 确认TensorRT库的nvinfer可以被搜索到
-```bash
-sudo ldconfig -v | grep libnvinfer
+        - 确认TensorRT库的nvinfer可以被搜索到
+        ```bash
+        sudo ldconfig -v | grep libnvinfer
 
-# 搜索结果长下面这样
-# libnvinfer.so.8 -> libnvinfer.so.8.6.1
-# libnvinfer_plugin.so.8 -> libnvinfer_plugin.so.8.6.1
-# ...
-```
+        # 搜索结果长下面这样
+        # libnvinfer.so.8 -> libnvinfer.so.8.6.1
+        # libnvinfer_plugin.so.8 -> libnvinfer_plugin.so.8.6.1
+        # ...
+        ```
 
-3. 选择3：Docker安装，生产环境使用，可以用英伟达官方容器，用下面这个命令直接拉镜像。
-```bash
-# 拉镜像
-docker pull nvcr.io/nvidia/pytorch:23.04-py3
+    3. 选择3：Docker安装，生产环境使用，可以用英伟达官方容器，用下面这个命令直接拉镜像。
+        ```bash
+        # 拉镜像
+        docker pull nvcr.io/nvidia/pytorch:23.04-py3
 
-# 临时进入容器（退出后容器自动关闭）
-docker run --gpus all \
-	-it --rm \
-	--ipc=host \
-	--ulimit memlock=-1 \
-	--ulimit stack=67108864 \
-	-v ${PWD}:/workspace/ \
-	nvcr.io/nvidia/pytorch:23.04-py3
-```
+        # 临时进入容器（退出后容器自动关闭）
+        docker run --gpus all \
+        	-it --rm \
+        	--ipc=host \
+        	--ulimit memlock=-1 \
+        	--ulimit stack=67108864 \
+        	-v ${PWD}:/workspace/ \
+        	nvcr.io/nvidia/pytorch:23.04-py3
+        ```
 
 7. 安装依赖
 ```bash
