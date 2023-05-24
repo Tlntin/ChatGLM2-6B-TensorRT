@@ -95,39 +95,50 @@ std::tuple<const char *, std::size_t> get_data_type(int data_type) {
   } \
 }
 
+bool load_engine(const std::string engine_path, std::vector<char> & engine_data) {
+  std::ifstream engine_file(
+    engine_path,
+    std::ios::binary | std::ios::in
+  );
+  engine_file.seekg(0, std::ios::end);
+  size_t engine_size = engine_file.tellg();
+  std::cout << "engine_size: " << (engine_size >> 20) << "M" << std::endl;
+  if (engine_size == 0) {
+    std::cerr << "Failed to read engine file" << std::endl;
+    engine_file.close();
+    return false;
+  }
+  engine_data.resize(engine_size);
+  engine_file.seekg(0, std::ios::beg);
+  engine_file.read(engine_data.data(), engine_size);
+  engine_file.close();
+  return true;
+}
+
 
 int main() {
   Logger logger;
   auto runtime = std::shared_ptr<nvinfer1::IRuntime>(
     nvinfer1::createInferRuntime(logger)
   );
-  // === load engine == //
-  // std::ifstream engine_file(
-  //   "models/chatglm6b-bs1-18.5G.plan",
-  //   std::ios::binary | std::ios::in
-  // );
-  std::ifstream engine_file(
-    "models/chatglm6b-bs1-12.5G.plan",
-    std::ios::binary | std::ios::in
-  );
-  engine_file.seekg(0, std::ios::end);
-  size_t engine_size = engine_file.tellg();
-  if (engine_size == 0) {
-    std::cerr << "Failed to read engine file" << std::endl;
-    engine_file.close();
+
+  // begin to load engine
+  std::string engine_path = "models/chatglm6b-bs1-12.5G.plan";
+  std::vector<char> engine_data;
+  bool result1 = load_engine(engine_path, engine_data);
+  if (!result1) {
+    std::cerr << "Failed to load engine" << std::endl;
     return -1;
   }
-  engine_file.seekg(0, std::ios::beg);
-  std::vector<char> engine_data(engine_size);
-  engine_file.read(engine_data.data(), engine_size);
-  engine_file.close();
   auto engine = std::shared_ptr<nvinfer1::ICudaEngine>(
-    runtime->deserializeCudaEngine(engine_data.data(), engine_size, nullptr)
+    runtime->deserializeCudaEngine(
+      engine_data.data(), engine_data.size(), nullptr
+    )
   );
   if (engine == nullptr) {
     std::cerr << "Failed to deserialize engine" << std::endl;
     return -1;
-  }
+  }  
 
   // === get input and output == //
   std::size_t n_io = engine->getNbIOTensors(); 
@@ -135,8 +146,6 @@ int main() {
   std::size_t n_input = 0;
   std::size_t n_output = 0;
   for (int i = 0; i < n_io; ++i) {
-    // std::cout << "Binding " << i << ": " << engine->getIOTensorName(i) << std::endl;
-    // std::cout << "Binding" << i << " is input: " << engine->bindingIsInput(i) << std::endl;
     tensor_names[i] = engine->getIOTensorName(i);
     if (engine->bindingIsInput(i)) {
       ++n_input;
@@ -156,13 +165,19 @@ int main() {
     engine->createExecutionContext()
   );
   context1->setOptimizationProfile(0);
+  cudaStream_t stream1;
+  CHECK_CUDA(cudaStreamCreate(&stream1));
+
   // this context is for inference when past_key_values is not None
   auto context2 = std::shared_ptr<nvinfer1::IExecutionContext>(
     engine->createExecutionContext()
   );
   context2->setOptimizationProfile(1);
-
+  cudaStream_t stream2;
+  CHECK_CUDA(cudaStreamCreate(&stream2));
+  // set batch size for global context
   int batch_size = 1;
+
   // === set input shape for context1 == //
   std::cout << "=============================" << std::endl;
   std::cout << "set input shape for context1" << std::endl;
@@ -226,18 +241,30 @@ int main() {
   CHECK_CUDA(cudaMalloc((void **)&d_position_ids, bytes_list1[1]));
   CHECK_CUDA(cudaMalloc((void **)&d_attention_mask, bytes_list1[2]));
   CHECK_CUDA(
-    cudaMemcpy(
-      d_input_ids, h_input_ids, bytes_list1[0], cudaMemcpyHostToDevice
+    cudaMemcpyAsync(
+      d_input_ids,
+      h_input_ids,
+      bytes_list1[0],
+      cudaMemcpyHostToDevice,
+      stream1
     )
   );
   CHECK_CUDA(
-    cudaMemcpy(
-      d_position_ids, h_position_ids, bytes_list1[1], cudaMemcpyHostToDevice
+    cudaMemcpyAsync(
+      d_position_ids,
+      h_position_ids,
+      bytes_list1[1],
+      cudaMemcpyHostToDevice,
+      stream1
     )
   );
   CHECK_CUDA(
-    cudaMemcpy(
-      d_attention_mask, h_attention_mask, bytes_list1[2], cudaMemcpyHostToDevice
+    cudaMemcpyAsync(
+      d_attention_mask,
+      h_attention_mask,
+      bytes_list1[2],
+      cudaMemcpyHostToDevice,
+      stream1
     )
   );
   context1->setTensorAddress(
@@ -270,27 +297,28 @@ int main() {
       tensor_names[i], d_output[i - n_input]
     );
   }
-  // run inference for context1
-  context1->enqueueV3(0);
+  // run inference for context1 on stream1
+  context1->enqueueV3(stream1);
 
   cudaDeviceSynchronize();
-  cudaStreamSynchronize(0);
+  cudaStreamSynchronize(stream1);
   // copy output data from device to host
   for (int i = n_input; i < n_io; ++i) {
     CHECK_CUDA(
-      cudaMemcpy(
+      cudaMemcpyAsync(
         h_output[i - n_input],
         d_output[i - n_input],
         bytes_list1[i],
-        cudaMemcpyDeviceToHost
+        cudaMemcpyDeviceToHost,
+        stream1
     ));
   }
 
-  // cudaDeviceSynchronize();
-  // cudaStreamSynchronize(0);
+  cudaDeviceSynchronize();
+  cudaStreamSynchronize(stream1);
   std::cout << "output[0] for context1: " << __half2float(h_output[0][0]) << std::endl;
 
-  // free memory for input and output data on context2
+  // free memory for input and output data on context1
   for (int i = 0; i < 3; ++i) {
     cudaFree(d_input[i]);
   }
@@ -298,6 +326,8 @@ int main() {
     delete [] h_output[i - n_input];
     cudaFree(d_output[i - n_input]);
   }
+  // destroy stream for context1
+  cudaStreamDestroy(stream1);
 
   // === set input shape for context2 == //
   std::cout << "set input shape for context2" << std::endl;
@@ -357,6 +387,33 @@ int main() {
   cudaMalloc((void **)&d_input_ids2, bytes_list2[0]);
   cudaMalloc((void **)&d_position_ids2, bytes_list2[1]);
   cudaMalloc((void **)&d_attention_mask2, bytes_list2[2]);
+  CHECK_CUDA(
+    cudaMemcpyAsync(
+      d_input_ids2,
+      h_input_ids2,
+      bytes_list2[0],
+      cudaMemcpyHostToDevice,
+      stream2
+    )
+  );
+  CHECK_CUDA(
+    cudaMemcpyAsync(
+      d_position_ids2,
+      h_position_ids2,
+      bytes_list2[1],
+      cudaMemcpyHostToDevice,
+      stream2
+    )
+  );
+  CHECK_CUDA(
+    cudaMemcpyAsync(
+      d_attention_mask2,
+      h_attention_mask2,
+      bytes_list2[2],
+      cudaMemcpyHostToDevice,
+      stream2
+    )
+  );
   void * d_input2[59] = {d_input_ids2, d_position_ids2, d_attention_mask2};
   for (int i = 3; i < n_input; ++i) {
     cudaMalloc((void **)&d_input2[i], bytes_list2[i]);
@@ -381,23 +438,24 @@ int main() {
       tensor_names[i], d_output2[i - n_input]
     );
   }
-  // run inference for context2
-  context2->enqueueV3(0);
+  // run inference for context2 on stream2
+  context2->enqueueV3(stream2);
   cudaDeviceSynchronize();
-  cudaStreamSynchronize(0);
+  cudaStreamSynchronize(stream2);
   // copy output data from device to host
   for (int i = n_input; i < n_io; ++i) {
     CHECK_CUDA(
-      cudaMemcpy(
+      cudaMemcpyAsync(
         h_output2[i - n_input],
         d_output2[i - n_input],
         bytes_list2[i],
-        cudaMemcpyDeviceToHost
+        cudaMemcpyDeviceToHost,
+        stream2
     ));
   }
   cudaDeviceSynchronize();
-  cudaStreamSynchronize(0);
-  // std::cout << "output[0] for context2: " << __half2float(h_output2[0][0]) << std::endl;
+  cudaStreamSynchronize(stream2);
+  std::cout << "output[0] for context2: " << __half2float(h_output2[0][0]) << std::endl;
    
   // free memory for input and output data on context2
   for (int i = 0; i < n_io; ++i) {
@@ -407,7 +465,8 @@ int main() {
     delete [] h_output2[i - n_input];
     cudaFree(d_output2[i - n_input]);
   }
-
+  // free memory for context2
+  cudaStreamDestroy(stream2);
   return 0;
 }
 
