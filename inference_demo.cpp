@@ -175,13 +175,49 @@ int main() {
   context2->setOptimizationProfile(1);
   cudaStream_t stream2;
   CHECK_CUDA(cudaStreamCreate(&stream2));
+  // === create event to compute time use == //
+  cudaEvent_t start_1, stop_1;
+  cudaEvent_t start_2, stop_2;
+  CHECK_CUDA(cudaEventCreate(&start_1));
+  CHECK_CUDA(cudaEventCreate(&start_2));
+  CHECK_CUDA(cudaEventCreate(&stop_1));
+  CHECK_CUDA(cudaEventCreate(&stop_2));
   // set batch size for global context
   int batch_size = 1;
-
-  // === set input shape for context1 == //
   std::cout << "=============================" << std::endl;
   std::cout << "set input shape for context1" << std::endl;
-  int seq_length = 4;
+  // prepare input data for context1
+  int h_input_ids[] = {1, 5, 74874, 130001};
+  int h_position_ids[] = {
+    0, 1, 2, 2, 
+    0, 0, 0, 1
+  };
+  bool h_attention_mask[] = {
+    false, false, false, true, 
+    false, false, false, true, 
+    false, false, false, true,
+    false, false, false, false
+  };
+  int seq_length = sizeof(h_input_ids) / sizeof(int);
+  std::cout << "seq_length: " << seq_length << std::endl;
+
+  // === set input shape for context2 == //
+  std::cout << "prepare input data for context2" << std::endl;
+  int h_input_ids2[] = {19316};
+  int h_position_ids2[] = {2, 2};
+  bool h_attention_mask2[] = {false};
+  void * h_input2[59] = {h_input_ids2, h_position_ids2, h_attention_mask2};
+
+  int past_seq_length = 6;
+  for (int i = 3; i < n_input; ++i) {
+    h_input2[i] = new __half[2 * batch_size * past_seq_length * 32 * 128];
+  }
+  std::cout << "past_seq_length: " << past_seq_length << std::endl;
+
+  // === begin to inference == //
+  // === set input shape for context1 == //
+  std::cout << "=========beging to inference for ceontext1======" << std::endl;
+  cudaEventRecord(start_1, stream1); 
   context1->setInputShape(
     "input_ids",
     nvinfer1::Dims2{batch_size, seq_length}
@@ -220,26 +256,13 @@ int main() {
     // std::cout << "tensor type: " << data_type << std::endl;
     // std::cout << std::endl;
   }
-  std::cout << "=============================" << std::endl;
-
-  // prepare input data for context1
-  int h_input_ids[] = {1, 5, 74874, 130001};
-  int h_position_ids[] = {
-    0, 1, 2, 2, 
-    0, 0, 0, 1
-  };
-  bool h_attention_mask[] = {
-    false, false, false, true, 
-    false, false, false, true, 
-    false, false, false, true,
-    false, false, false, false
-  };
   int *d_input_ids;
   int *d_position_ids;
   bool *d_attention_mask;
-  CHECK_CUDA(cudaMalloc((void **)&d_input_ids, bytes_list1[0]));
-  CHECK_CUDA(cudaMalloc((void **)&d_position_ids, bytes_list1[1]));
-  CHECK_CUDA(cudaMalloc((void **)&d_attention_mask, bytes_list1[2]));
+  
+  CHECK_CUDA(cudaMallocAsync((void **)&d_input_ids, bytes_list1[0], stream1));
+  CHECK_CUDA(cudaMallocAsync((void **)&d_position_ids, bytes_list1[1], stream1));
+  CHECK_CUDA(cudaMallocAsync((void **)&d_attention_mask, bytes_list1[2], stream1));
   CHECK_CUDA(
     cudaMemcpyAsync(
       d_input_ids,
@@ -278,9 +301,9 @@ int main() {
   );
   void * d_input[59] = {d_input_ids, d_position_ids, d_attention_mask};
   for (int i = 3; i < n_input; ++i) {
-    CHECK_CUDA(cudaMalloc((void **)&d_input[i], 2));
+    CHECK_CUDA(cudaMallocAsync((void **)&d_input[i], 2, stream1));
     // set input past_key_value data to zero, given that past_key_value is 1 data
-    CHECK_CUDA(cudaMemset(d_input[i], 0, 2));
+    CHECK_CUDA(cudaMemsetAsync(d_input[i], 0, 2));
     context1->setTensorAddress(
       tensor_names[i], d_input[i]
     );
@@ -291,7 +314,7 @@ int main() {
   for (int i = n_input; i < n_io; ++i) {
     h_output[i - n_input] = new __half[size_list1[i]];
     CHECK_CUDA(
-      cudaMalloc((void **)&d_output[i - n_input], bytes_list1[i])
+      cudaMallocAsync((void **)&d_output[i - n_input], bytes_list1[i], stream1)
     );
     context1->setTensorAddress(
       tensor_names[i], d_output[i - n_input]
@@ -313,9 +336,14 @@ int main() {
         stream1
     ));
   }
-
   cudaDeviceSynchronize();
   cudaStreamSynchronize(stream1);
+  cudaEventRecord(stop_1, stream1);
+  // wait for the event to complete
+  cudaEventSynchronize(stop_1);
+  float elapsed_1;
+  cudaEventElapsedTime(&elapsed_1, start_1, stop_1);
+  std::cout << "inference time for context1: " << elapsed_1 << " ms" << std::endl;
   std::cout << "output[0] for context1: " << __half2float(h_output[0][0]) << std::endl;
 
   // free memory for input and output data on context1
@@ -328,10 +356,12 @@ int main() {
   }
   // destroy stream for context1
   cudaStreamDestroy(stream1);
+  std::cout << "inference for context1 done" << std::endl;
+  std::cout << "=============================" << std::endl;
 
-  // === set input shape for context2 == //
-  std::cout << "set input shape for context2" << std::endl;
-  int past_seq_length = 6;
+  // inference for context2  
+  std::cout << "==========inference for context2===============" << std::endl;
+  cudaEventRecord(start_2, stream2);
   context2->setInputShape(
     "input_ids",
     nvinfer1::Dims2{batch_size, 1}
@@ -377,58 +407,26 @@ int main() {
     // std::cout << "tensor bytes: " << bytes_list2[i] << std::endl;
     // std::cout << std::endl;
   }
-  // prepare input data for context2
-  int h_input_ids2[] = {19316};
-  int h_position_ids2[] = {2, 2};
-  bool h_attention_mask2[] = {false};
-  int *d_input_ids2;
-  int *d_position_ids2;
-  bool *d_attention_mask2;
-  cudaMalloc((void **)&d_input_ids2, bytes_list2[0]);
-  cudaMalloc((void **)&d_position_ids2, bytes_list2[1]);
-  cudaMalloc((void **)&d_attention_mask2, bytes_list2[2]);
-  CHECK_CUDA(
-    cudaMemcpyAsync(
-      d_input_ids2,
-      h_input_ids2,
-      bytes_list2[0],
+  void * d_input2[59] = {};
+  for (int i = 0; i < n_input; ++i) {
+    CHECK_CUDA(cudaMallocAsync((void **)&d_input2[i], bytes_list2[i], stream2));
+    CHECK_CUDA(cudaMemcpyAsync(
+      d_input2[i],
+      h_input2[i],
+      bytes_list2[i],
       cudaMemcpyHostToDevice,
       stream2
-    )
-  );
-  CHECK_CUDA(
-    cudaMemcpyAsync(
-      d_position_ids2,
-      h_position_ids2,
-      bytes_list2[1],
-      cudaMemcpyHostToDevice,
-      stream2
-    )
-  );
-  CHECK_CUDA(
-    cudaMemcpyAsync(
-      d_attention_mask2,
-      h_attention_mask2,
-      bytes_list2[2],
-      cudaMemcpyHostToDevice,
-      stream2
-    )
-  );
-  void * d_input2[59] = {d_input_ids2, d_position_ids2, d_attention_mask2};
-  for (int i = 3; i < n_input; ++i) {
-    cudaMalloc((void **)&d_input2[i], bytes_list2[i]);
-    // 暂时不知道设置啥好，先都设置为1吧
-    cudaMemset(d_input2[i], 1, bytes_list2[i]);
+    ))
   }
   // prepare output data for context2
   __half * h_output2[59];
   void * d_output2[59];
   for (int i = n_input; i < n_io; ++i) {
     h_output2[i - n_input] = new __half[size_list2[i]];
-    cudaMalloc((void **)&d_output2[i - n_input], bytes_list2[i]);
+    cudaMallocAsync((void **)&d_output2[i - n_input], bytes_list2[i], stream2);
   }
   // bind data to context2
-  for (int i = 0; i < n_io; ++i) {
+  for (int i = 0; i < n_input; ++i) {
     context2->setTensorAddress(
       tensor_names[i], d_input2[i]
     );
@@ -455,6 +453,11 @@ int main() {
   }
   cudaDeviceSynchronize();
   cudaStreamSynchronize(stream2);
+  cudaEventRecord(stop_2, stream2);
+  cudaEventSynchronize(stop_2);
+  float elapsed_2;
+  cudaEventElapsedTime(&elapsed_2, start_2, stop_2);
+  std::cout << "inference time for context2: " << elapsed_2 << " ms" << std::endl;
   std::cout << "output[0] for context2: " << __half2float(h_output2[0][0]) << std::endl;
    
   // free memory for input and output data on context2
