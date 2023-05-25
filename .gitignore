@@ -1,4 +1,5 @@
 chatglm_6b/
+output/
 onnx_output/
 new_onnx_output/
 onnx_output2/

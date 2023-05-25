@@ -8,6 +8,18 @@ sys.path.append(project_dir)
 from chatglm_6b.modeling_chatglm import ChatGLMForConditionalGeneration
 from chatglm_6b.tokenization_chatglm import ChatGLMTokenizer
 
+
+output_dir = os.path.join(project_dir, "output")
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+onnx_output_dir = os.path.join(output_dir, "onnx_output_fp32")
+if not os.path.exists(onnx_output_dir):
+    os.mkdir(onnx_output_dir)
+else:
+    for file in os.listdir(onnx_output_dir):
+        os.remove(os.path.join(onnx_output_dir, file))
+onnx_model_path = os.path.join(onnx_output_dir, "chatglm_6b.onnx")
+
 model_dir = os.path.join(project_dir, "chatglm_6b")
 tokenizer = ChatGLMTokenizer.from_pretrained(model_dir)
 model = ChatGLMForConditionalGeneration.from_pretrained(model_dir).float().cpu()
@@ -42,11 +54,6 @@ past_key_values = [
     [torch.zeros(0, 1, 32, 128) for _ in range(2)]
     for _ in range(28)
 ]
-if not os.path.exists("../onnx_output"):
-    os.makedirs("../onnx_output")
-else:
-    for file in os.listdir("../onnx_output"):
-        os.remove(os.path.join("../onnx_output", file))
 
 
 input_names=["input_ids",'position_ids', "attention_mask"]
@@ -82,7 +89,7 @@ print(dynamic_axes)
 
 torch.onnx.export(
     model, (input_ids,position_ids,attention_mask, past_key_values),
-    "../onnx_output/chatglm_6b.onnx",
+    onnx_model_path,
     opset_version=18,
     input_names=input_names,
     output_names=output_names,

@@ -129,7 +129,7 @@ void Kernel::load_engine(const std::string engine_path) {
   }
   this->engine_ = std::shared_ptr<nvinfer1::ICudaEngine>(
     this->runtime_->deserializeCudaEngine(
-      engine_data.data(), engine_data.size(), nullptr
+      engine_data.data(), engine_data.size()
     )
   );
   if (this->engine_ == nullptr) {
@@ -153,7 +153,7 @@ void Kernel::vertify_io_number() {
   for (int i = 0; i < n_io; ++i) {
     const char * name = this->engine_->getIOTensorName(i);
     this->tensor_names_.push_back(name);
-    if (this->engine_->bindingIsInput(i)) {
+    if (this->engine_->getTensorIOMode(name) == nvinfer1::TensorIOMode::kINPUT) {
       ++n_input;
     } else {
       ++n_output;
@@ -188,18 +188,18 @@ void Kernel::vertify_io_number() {
 }
 
 void Kernel::init_execute_context() {
+  CHECK_CUDA(cudaStreamCreate(&this->stream_1_));
   this->context_1_ = std::shared_ptr<nvinfer1::IExecutionContext>(
     this->engine_->createExecutionContext()
   );
-  this->context_1_->setOptimizationProfile(0);
-  CHECK_CUDA(cudaStreamCreate(&this->stream_1_));
+  this->context_1_->setOptimizationProfileAsync(0, this->stream_1_);
 
   // this context is for inference when past_key_values is not None
+  CHECK_CUDA(cudaStreamCreate(&this->stream_2_));
   this->context_2_ = std::shared_ptr<nvinfer1::IExecutionContext>(
     this->engine_->createExecutionContext()
   );
-  this->context_2_->setOptimizationProfile(1);
-  CHECK_CUDA(cudaStreamCreate(&this->stream_2_));
+  this->context_2_->setOptimizationProfileAsync(1, this->stream_2_);
 }
 
 std::vector<std::vector<__half>> Kernel::forward(
@@ -354,13 +354,14 @@ void Kernel::get_tensor_size(
   std::vector<std::size_t> & type_bytes_list
 ) {
   for (int i = 0; i < this->n_total_; ++i) {
-    // std::cout << "tensor name: " << this->tensor_names_[i] << std::endl;
+    const char * tensor_name = this->tensor_names_[i];
+    LOG("tensor name: %s\n", tensor_name);
     auto dims = context->getTensorShape(this->tensor_names_[i]);
-    // std::cout << "tensor shape: ";
-    // for (int j = 0; j < dims.nbDims; ++j) {
-    //   std::cout << dims.d[j] << ", ";
-    // }
-    // std::cout << std::endl;
+    LOG("tensor shape: ");
+    for (int j = 0; j < dims.nbDims; ++j) {
+      LOG("%d, ", dims.d[j]);
+    }
+    LOG("\n");
     std::size_t size = 1;
     for (int j = 0; j < dims.nbDims; ++j) {
       size *= dims.d[j];
@@ -374,9 +375,9 @@ void Kernel::get_tensor_size(
     std::size_t type_size = std::get<1>(size_result);
     type_bytes_list[i] = type_size;
     bytes_list[i] = type_size * size;
-    // std::cout << "tensor bytes: " << bytes_list1[i] << std::endl;
-    // std::cout << "tensor type: " << data_type << std::endl;
-    // std::cout << std::endl;
+    LOG("tensor bytes: %ld\n", bytes_list[i]);
+    LOG("tensor type: %s\n", data_type);
+    LOG("\n");
   }
 }
 

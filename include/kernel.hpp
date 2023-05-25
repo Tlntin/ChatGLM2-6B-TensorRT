@@ -6,8 +6,8 @@
 #include <memory>
 #include <color.h>
 #include <cuda_runtime.h>
-#include <NvInfer.h>
 #include <cuda_fp16.h>
+#include <NvInfer.h>
 
 
 class Logger : public nvinfer1::ILogger
@@ -15,6 +15,11 @@ class Logger : public nvinfer1::ILogger
   void log(Severity severity, const char* msg) noexcept override;
 };
 
+#ifdef DEBUG
+#define LOG(...) printf(GREEN); printf(__VA_ARGS__); printf(NONE)
+#else
+#define LOG(...)
+#endif
 
 std::tuple<const char *, std::size_t> get_data_type(int data_type);
 
