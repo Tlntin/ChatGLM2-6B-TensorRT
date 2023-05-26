@@ -8,7 +8,7 @@ os.environ["export ORT_LOG_LEVEL"] = "VERBOSE"
 
 #  tokenizer = AutoTokenizer.from_pretrained("../chatglm_6b", trust_remote_code=True)
 
-onnx_path = "../onnx_output/chatglm_6b.onnx"
+onnx_path = "../output/onnx_output/chatglm_6b.onnx"
 providers = ["CPUExecutionProvider"]
 sess = ort.InferenceSession(onnx_path, providers=providers)
 input_text = "你好"

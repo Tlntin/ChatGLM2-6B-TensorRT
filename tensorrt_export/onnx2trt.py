@@ -153,7 +153,7 @@ def get_network_definition(trt_network):
 
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
-onnx_path = os.path.join(project_dir, "onnx_output", "chatglm_6b.onnx")
+onnx_path = os.path.join(project_dir,"output", "onnx_output", "chatglm_6b.onnx")
 model_dir = os.path.join(project_dir, "models")
 if not os.path.exists(model_dir):
     os.mkdir(model_dir)

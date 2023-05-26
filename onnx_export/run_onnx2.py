@@ -5,7 +5,7 @@ import numpy as np
 os.environ["export ORT_LOG_LEVEL"] = "VERBOSE"
 
 
-onnx_path = "../onnx_output/chatglm_6b.onnx"
+onnx_path = "../output/onnx_output/chatglm_6b.onnx"
 providers = ["CPUExecutionProvider"]
 sess = ort.InferenceSession(onnx_path, providers=providers)
 input_ids = np.array([[19316]], dtype=np.int64)
