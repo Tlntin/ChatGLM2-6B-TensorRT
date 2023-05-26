@@ -5,7 +5,7 @@ new_onnx_output/
 onnx_output2/
 ChatGLM/
 demo.py
-inference_demo
+inference_test
 models/
 */__pycache__/
 __pycache__/

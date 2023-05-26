@@ -447,7 +447,10 @@ std::vector<std::vector<__half>> Kernel::run_gpu_inference(
     for (int i = 0; i < 28; ++i) {
       for (int j = 0; j < 2; ++j) {
         int index = i * 2 + j + 3;
-        std::size_t n_bytes = type_bytes_list[index];
+        std::size_t n_bytes = bytes_list[index];
+        // LOG("name: %s\n", this->tensor_names_[index]);
+        // LOG("index: %d, n_bytes: %ld\n", index, n_bytes);
+        // LOG("past_key_values[i][j].size(): %ld\n", past_key_values[i][j].size());
         CHECK_CUDA(cudaMallocAsync((void **)&d_input[index], n_bytes, stream));
         CHECK_CUDA(
           cudaMemcpyAsync(

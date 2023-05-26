@@ -178,6 +178,20 @@ python3 read_trt_profile.py
 ```bash
 cd ..
 ```
+5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差（注意，需要安装xtensor用于读取numpy文件, 安装介绍[链接]（https://xtensor.readthedocs.io/en/latest/installation.html)）。
+```bash
+# 编译
+nvcc -w kernel/kernel.cpp inference_test.cpp \
+    -o inference_test \
+    -I /usr/local/cuda/include \
+    -I include \
+    -L /usr/local/cuda/lib64 \
+    -l cudadevrt \
+    -l nvinfer
+
+# 执行
+./inference_test
+```
 
 
 ### 第三步，推理
