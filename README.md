@@ -192,6 +192,17 @@ nvcc -w kernel/kernel.cpp inference_test.cpp \
 # 执行
 ./inference_test
 ```
+6. 将c++部分的tensorRT forward通过pybind11进行封装，方便python推理调用。
+```bash
+g++ -w -O3 -Wall -shared -std=c++11 \
+    -fPIC `python3 -m pybind11 --includes` \
+    -I include  kernel/bind.cpp kernel/kernel.cpp \
+    -I /usr/local/cuda/include \
+    -L /usr/local/cuda/lib64 \
+    -lcudart \
+    -lnvinfer \
+    -o kernel/kernel$(python3-config --extension-suffix)
+```
 
 
 ### 第三步，推理

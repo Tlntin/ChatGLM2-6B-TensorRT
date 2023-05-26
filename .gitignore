@@ -12,3 +12,5 @@ __pycache__/
 *.pyc
 .vscode/
 .idea/
+kernel/*.so
+kernel_test.py
