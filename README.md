@@ -178,31 +178,19 @@ python3 read_trt_profile.py
 ```bash
 cd ..
 ```
-5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差（注意，需要安装xtensor用于读取numpy文件, 安装介绍[链接]（https://xtensor.readthedocs.io/en/latest/installation.html)）。
+5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差（可选，推荐）。
+- 编译前需要安装libtorch, 去官网下载安装即可。
+- 正式编译
 ```bash
-# 编译
-nvcc -w kernel/kernel.cpp inference_test.cpp \
-    -o inference_test \
-    -I /usr/local/cuda/include \
-    -I include \
-    -L /usr/local/cuda/lib64 \
-    -l cudadevrt \
-    -l nvinfer
+mkdir build && cd build
+cmake ..
+make
 
-# 执行
+- 执行
+```bash
 ./inference_test
 ```
-6. 将c++部分的tensorRT forward通过pybind11进行封装，方便python推理调用。
-```bash
-g++ -w -O3 -Wall -shared -std=c++11 \
-    -fPIC `python3 -m pybind11 --includes` \
-    -I include  kernel/bind.cpp kernel/kernel.cpp \
-    -I /usr/local/cuda/include \
-    -L /usr/local/cuda/lib64 \
-    -lcudart \
-    -lnvinfer \
-    -o kernel/kernel$(python3-config --extension-suffix)
-```
+
 
 
 ### 第三步，推理
@@ -213,11 +201,6 @@ g++ -w -O3 -Wall -shared -std=c++11 \
 ### 待做（画饼）
 - [ ] 自己实现一个推理方案，支持python/c++
 - [ ] 将FastTransformer编译为tensorRT的一个插件，以实现更快的加速方案。
-
-
-### 其他
-- 貌似自tensorRT8.6.1开始，同一个tensorRT版本，不同架构/算力，可以用同一份编译好的tensorRT Engine,也就是说，如果有人用TensorRT8.6.1编译好了共享给你的话，前两步理论上可以省略（不过只支持英伟达30系/40系显卡，并且存在一定精度损失）。
-
 
 ### 参考链接
 - https://github.com/THUDM/ChatGLM-6B

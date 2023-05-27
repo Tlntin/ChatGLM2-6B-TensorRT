@@ -82,6 +82,10 @@ std::tuple<const char *, std::size_t> get_data_type(int data_type) {
 
 
 bool load_engine_data(const std::string engine_path, std::vector<char> & engine_data) {
+  if (std::filesystem::exists(engine_path) == false || std::filesystem::is_regular_file(engine_path) == false) {
+    std::cerr << RED << "Failed to find engine file" << NONE << std::endl;
+    return false;
+  }
   std::ifstream engine_file(
     engine_path,
     std::ios::binary | std::ios::in
@@ -102,7 +106,7 @@ bool load_engine_data(const std::string engine_path, std::vector<char> & engine_
 }
 
 
-Kernel::Kernel (const std::string engine_path, int batch_size): batch_size_(batch_size) {
+Kernel::Kernel (const std::string engine_path, int batch_size) : batch_size_(batch_size) {
   // kernel init
   this->runtime_ = std::shared_ptr<nvinfer1::IRuntime>(
     nvinfer1::createInferRuntime(this->logger_)
@@ -125,7 +129,9 @@ void Kernel::load_engine(const std::string engine_path) {
   std::vector<char> engine_data;
   bool result1 = load_engine_data(engine_path, engine_data);
   if (!result1) {
-    throw std::runtime_error("Failed to load engine");
+    throw std::runtime_error(
+      "Failed to load engine, " + engine_path + " not found!"
+    );
   }
   this->engine_ = std::shared_ptr<nvinfer1::ICudaEngine>(
     this->runtime_->deserializeCudaEngine(
@@ -202,45 +208,53 @@ void Kernel::init_execute_context() {
   this->context_2_->setOptimizationProfileAsync(1, this->stream_2_);
 }
 
-std::vector<std::vector<__half>> Kernel::forward(
-  std::vector<int> & input_ids,
-  std::vector<int> & position_ids, 
-  std::vector<bool> & attention_mask
+std::vector<torch::Tensor> Kernel::forward(
+  const torch::Tensor & input_ids,
+  const torch::Tensor & position_ids,
+  const torch::Tensor & attention_mask
 ) {
   // forward for context 1
-  if (input_ids.size() % this->batch_size_ != 0) {
+  if (input_ids.size(0) != this->batch_size_ ) {
     throw std::runtime_error(
-      "input_ids.size() % batch_size != 0 "
+      "input_ids batch size is not correct, must be " \
+      + std::to_string(this->batch_size_)
     );
   }
-  if (position_ids.size() % this->batch_size_ != 0) {
+  if (position_ids.size(0) != this->batch_size_) {
     throw std::runtime_error(
-      "position_ids.size() % batch_size != 0 "
+      "position_ids batch size is not correct, must be " \
+      + std::to_string(this->batch_size_)
     );
   }
 
-  if (attention_mask.size() % this->batch_size_ != 0) {
+  if (attention_mask.size(0) != this->batch_size_) {
     throw std::runtime_error(
-      "attention_mask.size() % batch_size != 0 "
+      "attention_mask batch size is not correct, must be " \
+      + std::to_string(this->batch_size_)
     );
   }
-  int seq_length = input_ids.size() / this->batch_size_;
+  int seq_length = input_ids.size(1);
   this->set_input_for_context1(seq_length);
   // std::vector<std::size_t> size_list(this->n_total_);
   std::vector<std::size_t> bytes_list(this->n_total_);
   std::vector<std::size_t> type_bytes_list(this->n_total_);
   this->get_tensor_size(this->context_1_, bytes_list, type_bytes_list);
-  std::vector<std::vector<std::vector<__half>>> past_key_values;
+  const int seq_len = input_ids.size(1);
+  const int present_key_len = input_ids.size(1);
+  torch::Device device = input_ids.device();
+  // number of input
+  const std::size_t input_size = 3;
+  void * d_input[3] = {
+    input_ids.data_ptr(), position_ids.data_ptr(), attention_mask.data_ptr()
+  };
   // convert attention_mask to char
-  std::vector<char> attention_mask_char(
-    attention_mask.begin(), attention_mask.end()
-  );
   return std::move(
     this->run_gpu_inference(
-      input_ids,
-      position_ids,
-      attention_mask_char,
-      past_key_values, 
+      d_input,
+      seq_len,
+      present_key_len,
+      input_size,
+      device,
       bytes_list,
       type_bytes_list,
       this->context_1_,
@@ -249,22 +263,24 @@ std::vector<std::vector<__half>> Kernel::forward(
   );
 }
 
-std::vector<std::vector<__half>> Kernel::forward(
-  std::vector<int> & input_ids,
-  std::vector<int> & position_ids, 
-  std::vector<bool> & attention_mask,
-  std::vector<std::vector<std::vector<__half>>> & past_key_values
+std::vector<torch::Tensor> Kernel::forward(
+  const torch::Tensor & input_ids,
+  const torch::Tensor & position_ids,
+  const torch::Tensor & attention_mask,
+  const std::vector<std::vector<torch::Tensor>> & past_key_values
 ) {
   // forward for context 2
   // data shape vertification
-  if (input_ids.size() % this->batch_size_ != 0) {
+  if (input_ids.size(0) != this->batch_size_ ) {
     throw std::runtime_error(
-      "input_ids.size() % batch_size != 0 "
+      "input_ids batch size is not correct, must be " \
+      + std::to_string(this->batch_size_)
     );
   }
-  if (position_ids.size() % this->batch_size_ != 0) {
+  if (position_ids.size(0) != this->batch_size_) {
     throw std::runtime_error(
-      "position_ids.size() % batch_size != 0 "
+      "position_ids batch size is not correct, must be " \
+      + std::to_string(this->batch_size_)
     );
   }
   if (past_key_values.size() != 28) {
@@ -277,36 +293,46 @@ std::vector<std::vector<__half>> Kernel::forward(
       "past_key_values.size() != 28"
     );
   }
-  if ((past_key_values[0][0].size() / 32 / 128) % this->batch_size_ != 0) {
+  if (past_key_values[0][0].size(1) != this->batch_size_) {
     throw std::runtime_error(
-      "past_key_values.size() % batch_size != 0 "
+      "past_key_values[0][0] batch_size is not correct, must be " \
+      + std::to_string(this->batch_size_)
     );
   }
   
   // set input shape for context 2
-  int past_seq_length = past_key_values[0][0].size() / 32 / 128 / this->batch_size_;
+  int past_seq_length = past_key_values[0][0].size(0);
   this->set_input_for_context2(past_seq_length);
   // get tensor size for context2
   std::vector<std::size_t> bytes_list(this->n_total_);
   std::vector<std::size_t> type_bytes_list(this->n_total_);
   this->get_tensor_size(this->context_2_, bytes_list, type_bytes_list);
-  std::cout << "get tensor size for context 2 ok!" << std::endl;
-  // convert attention_mask to char
-  std::vector<char> attention_mask_char(
-    attention_mask.begin(), attention_mask.end()
-  );
+  MY_LOG("get tensor size for context 2 ok!\n");
+  const int seq_len = input_ids.size(1);
+  const int present_key_len = seq_len + past_seq_length;
+  torch::Device device = input_ids.device();
+  // number of input
+  const std::size_t input_size = this->n_input_;
+  void * d_input[input_size] = {
+    input_ids.data_ptr(), position_ids.data_ptr(), attention_mask.data_ptr()
+  };
+  for (int i = 0; i < 28; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      d_input[i * 2 + j + 3] = past_key_values[i][j].data_ptr();
+    }
+  }
   return std::move(
     this->run_gpu_inference(
-      input_ids,
-      position_ids,
-      attention_mask_char,
-      past_key_values,
+      d_input,
+      seq_len,
+      present_key_len,
+      input_size,
+      device,
       bytes_list,
       type_bytes_list,
       this->context_2_,
       this->stream_2_
-    )
-  );
+  ));
 }
 
     
@@ -353,15 +379,16 @@ void Kernel::get_tensor_size(
   std::vector<std::size_t> & bytes_list,
   std::vector<std::size_t> & type_bytes_list
 ) {
+  MY_LOG("======= get tensor size ====");
   for (int i = 0; i < this->n_total_; ++i) {
     const char * tensor_name = this->tensor_names_[i];
-    LOG("tensor name: %s\n", tensor_name);
+    MY_LOG("tensor name: %s\n", tensor_name);
     auto dims = context->getTensorShape(this->tensor_names_[i]);
-    LOG("tensor shape: ");
+    MY_LOG("tensor shape: ");
     for (int j = 0; j < dims.nbDims; ++j) {
-      LOG("%d, ", dims.d[j]);
+      MY_LOG("%d, ", dims.d[j]);
     }
-    LOG("\n");
+    MY_LOG("\n");
     std::size_t size = 1;
     for (int j = 0; j < dims.nbDims; ++j) {
       size *= dims.d[j];
@@ -375,136 +402,83 @@ void Kernel::get_tensor_size(
     std::size_t type_size = std::get<1>(size_result);
     type_bytes_list[i] = type_size;
     bytes_list[i] = type_size * size;
-    LOG("tensor bytes: %ld\n", bytes_list[i]);
-    LOG("tensor type: %s\n", data_type);
-    LOG("\n");
+    MY_LOG("tensor bytes: %ld\n", bytes_list[i]);
+    MY_LOG("tensor type: %s\n", data_type);
+    MY_LOG("\n");
   }
+  MY_LOG("======= get tensor size ok ====");
+  MY_LOG("\n");
 }
 
-std::vector<std::vector<__half>> Kernel::run_gpu_inference(
-  const std::vector<int> & input_ids,
-  const std::vector<int> & position_ids,
-  const std::vector<char> & attention_mask,
-  const std::vector<std::vector<std::vector<__half>>> & past_key_values, 
+std::vector<torch::Tensor> Kernel::run_gpu_inference(
+  void * d_input[],
+  const int seq_len,
+  const int present_key_len,
+  const std::size_t input_size,
+  torch::Device device,
   std::vector<std::size_t> & bytes_list,
   std::vector<std::size_t> & type_bytes_list,
-  std::shared_ptr<nvinfer1::IExecutionContext> context, 
+  std::shared_ptr<nvinfer1::IExecutionContext> & context, 
   cudaStream_t & stream
 ) {
-  std::vector<std::vector<__half>> h_output(this->n_output_);
-  void * d_input[this->n_input_] = {};
-  // for input_ids
-  CHECK_CUDA(cudaMallocAsync((void **)&d_input[0], bytes_list[0], stream));
-  CHECK_CUDA(
-    cudaMemcpyAsync(
-      d_input[0],
-      input_ids.data(),
-      bytes_list[0],
-      cudaMemcpyHostToDevice,
-      stream
-    )
+  MY_LOG("=== prepare run gpu interference =\n");
+  std::vector<torch::Tensor> d_output;
+  MY_LOG("seq len: %d\n", seq_len);
+  MY_LOG("present_key_len: %d\n", present_key_len);
+  // output for present_key
+  for (int i = 0; i < this->n_output_ - 1; ++i) {
+    d_output.push_back(
+      torch::zeros(
+        {present_key_len, this->batch_size_, 32, 128}, 
+        torch::dtype(torch::kFloat16)
+      ).to(device)
+    );
+  }
+  // output for logists
+  d_output.push_back(
+    torch::zeros(
+      {this->batch_size_, seq_len, this->vocab_size_},
+      torch::dtype(torch::kFloat16)
+    ).to(device)
   );
-  context->setTensorAddress(
-      this->tensor_names_[0], d_input[0]
-  );
-  // for position_ids
-  CHECK_CUDA(cudaMallocAsync((void **)&d_input[1], bytes_list[1], stream));
-  CHECK_CUDA(
-    cudaMemcpyAsync(
-      d_input[1],
-      position_ids.data(),
-      bytes_list[1],
-      cudaMemcpyHostToDevice,
-      stream
-    )
-  );
-  context->setTensorAddress(
-      this->tensor_names_[1], d_input[1]
-  );
-  // for attention_mask
-  CHECK_CUDA(cudaMallocAsync((void **)&d_input[2], bytes_list[2], stream));
-  CHECK_CUDA(
-    cudaMemcpyAsync(
-      d_input[2],
-      attention_mask.data(),
-      bytes_list[2],
-      cudaMemcpyHostToDevice,
-      stream
-    )
-  );
-  context->setTensorAddress(
-      this->tensor_names_[2], d_input[2]
-  );
-  // for past_key_values
-  if (past_key_values.size() == 0) {
+  // set input for input_ids/position_id/attention_mask
+  for (int i = 0; i < 3; ++i) {
+    context->setTensorAddress(
+      this->tensor_names_[i],
+      d_input[i]
+    );
+  }
+  // set input for past_key_values
+  if (input_size == 3) {
+    MY_LOG("input size is 3, we will use default zerro value to fill it");
+    void * default_value = nullptr;
+    int default_byte = type_bytes_list[3];
+    CHECK_CUDA(cudaMallocAsync((void **)(&default_value), default_byte, stream));
+    CHECK_CUDA(cudaMemsetAsync(default_value, 0, default_byte, stream));
     for (int i = 3; i < this->n_input_; ++i) {
-      std::size_t n_bytes  = type_bytes_list[i];
-      CHECK_CUDA(cudaMallocAsync((void **)&d_input[i], n_bytes, stream));
-      CHECK_CUDA(cudaMemsetAsync(d_input[i], 0, n_bytes, stream));
-      context->setTensorAddress(this->tensor_names_[i], d_input[i]);
-    }
-  } else {
-    for (int i = 0; i < 28; ++i) {
-      for (int j = 0; j < 2; ++j) {
-        int index = i * 2 + j + 3;
-        std::size_t n_bytes = bytes_list[index];
-        // LOG("name: %s\n", this->tensor_names_[index]);
-        // LOG("index: %d, n_bytes: %ld\n", index, n_bytes);
-        // LOG("past_key_values[i][j].size(): %ld\n", past_key_values[i][j].size());
-        CHECK_CUDA(cudaMallocAsync((void **)&d_input[index], n_bytes, stream));
-        CHECK_CUDA(
-          cudaMemcpyAsync(
-            d_input[index],
-            past_key_values[i][j].data(),
-            n_bytes,
-            cudaMemcpyHostToDevice,
-            stream
-          )
-        );
-        context->setTensorAddress(this->tensor_names_[index], d_input[index]);
-      }
+      context->setTensorAddress(this->tensor_names_[i], default_value);
     }
   }
-  // prepare output data
-  void * d_output[this->n_output_];
+  else {
+    for (int i = 3; i < this->n_input_; ++i) {
+      context->setTensorAddress(
+        this->tensor_names_[i],
+        d_input[i]
+      );
+    }
+  }
+  // set output
   for (int i = this->n_input_; i < this->n_total_; ++i) {
-    auto n_size = bytes_list[i] / type_bytes_list[i];
-    h_output[i - this->n_input_].resize(n_size);
-    CHECK_CUDA(
-      cudaMallocAsync(
-        (void **)&d_output[i - this->n_input_],
-        bytes_list[i],
-        stream
-      )
-    );
     context->setTensorAddress(
-      this->tensor_names_[i], d_output[i - this->n_input_]
+      this->tensor_names_[i],
+      d_output[i - this->n_input_].data_ptr()
     );
   }
   // run inference
   context->enqueueV3(stream);
-  // cudaDeviceSynchronize();
-  // cudaStreamSynchronize(stream);
-  // copy output data from device to host
-  for (int i = this->n_input_; i < this->n_total_; ++i) {
-    CHECK_CUDA(
-      cudaMemcpyAsync(
-        h_output[i - this->n_input_].data(),
-        d_output[i - this->n_input_],
-        bytes_list[i],
-        cudaMemcpyDeviceToHost,
-        stream
-    ));
-  }
+  // copy data back ? you don't need to copy data back
   cudaDeviceSynchronize();
   cudaStreamSynchronize(stream);
-  // free device memory
-  for (int i = 0; i < this->n_input_; ++i) {
-    cudaFree(d_input[i]);
-  }
-  for (int i = this->n_input_; i < this->n_total_; ++i) {
-    cudaFree(d_output[i - this->n_input_]);
-  }
-  return h_output;
+  return d_output; 
 }
 

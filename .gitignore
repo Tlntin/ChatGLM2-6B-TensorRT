@@ -14,3 +14,5 @@ __pycache__/
 .idea/
 kernel/*.so
 kernel_test.py
+build
+kernel/__pycache__
