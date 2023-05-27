@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.0)
 
 project(inference_test)
 
-# Set C++14 standard
+# Set C++17 standard
 set(CMAKE_CXX_STANDARD 17)
 
 # Find and include LibTorch
