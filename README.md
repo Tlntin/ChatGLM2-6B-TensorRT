@@ -187,7 +187,6 @@ cmake ..
 make
 
 - 执行
-```bash
 ./inference_test
 ```
 
