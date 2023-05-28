@@ -178,9 +178,8 @@ python3 read_trt_profile.py
 ```bash
 cd ..
 ```
-5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差, 同时完成c++部分的tensorRT forward动态库封装（可选，推荐）。
-- 注意：编译inference_test需要安装libtorch, 去官网下载安装即可, 然后将CMake的`set(CMAKE_PREFIX_PATH ${PYTORCH_DIR})`换成`set(CMAKE_PREFIX_PATH /usr/local/libtorch/share/cmake)`即可。
-- 注意：编译pybind11的动态库则保持目前的状态即可，可以忽略现在的报错。
+5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差（可选，推荐）。
+- 注意：编译inference_test需要安装libtorch, 去官网下载安装即可，需要下载xxx版本而不是pre_cxx版本。
 - 正式编译
 ```bash
 mkdir build && cd build
@@ -190,8 +189,17 @@ make
 # 执行
 ./inference_test
 
-# 拷贝动态库到kernel目录
-cp libcpp_kernel.so ../kernel/kernel$(python3-config --extension-suffix)
+```
+6. 安装c++部分的tensorRT forward动态库封装
+
+```bash
+cd kernel
+python3 setup.py install
+cd ..
+```
+- 测试一下能否读取TensorRT文件。
+```bash
+python3 -c "from ckernel import Kernel; Kernel('models/models/chatglm6b-bs1-12.5G.plan', 1);"
 ```
 
 

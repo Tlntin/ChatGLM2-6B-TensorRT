@@ -3,6 +3,7 @@
 #include <vector>
 #include <stdexcept>
 #include <memory>
+#include <string>
 #include <filesystem>
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
@@ -40,7 +41,7 @@ void _check_cuda(cudaError_t code, const char *func, const char *file, int line)
 bool load_engine_data(const std::string engine_path, std::vector<char> & engine_data);
 
 
-class Kernel: public torch::nn::Module {
+class Kernel {
   private:
     Logger logger_;
     std::shared_ptr<nvinfer1::IRuntime> runtime_;

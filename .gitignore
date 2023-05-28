@@ -17,3 +17,5 @@ kernel_test.py
 build
 model.py
 kernel/__pycache__
+kernel/ckernel.egg-info
+kernel/dist
