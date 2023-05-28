@@ -15,4 +15,5 @@ __pycache__/
 kernel/*.so
 kernel_test.py
 build
+model.py
 kernel/__pycache__

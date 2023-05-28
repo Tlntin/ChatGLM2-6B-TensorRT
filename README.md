@@ -178,7 +178,7 @@ python3 read_trt_profile.py
 ```bash
 cd ..
 ```
-5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差（可选，推荐）。
+5. 编译TensorRT C++测试文件与，测量pytorch与tensorRT最大精度误差, 同时完成c++部分的tensorRT forward动态库封装（可选，推荐）。
 - 编译前需要安装libtorch, 去官网下载安装即可。
 - 正式编译
 ```bash
@@ -186,32 +186,12 @@ mkdir build && cd build
 cmake ..
 make
 
-- 执行
+# 执行
 ./inference_test
-```
 
-6. 将c++部分的tensorRT forward通过pybind11进行封装，方便python推理调用（可选）。
-- for linux g++
-```bash
-g++ -w -std=c++17 -O3 -Wall -fPIC  -shared \
-    -I /usr/local/cuda/include \
-    -I include \
-    -L /usr/local/cuda/lib64 \
-    -l nvinfer \
-    -l cudart \
-    -I `python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_inc())"` \
-    -I `python -c "import torch; print(torch.__path__[0] + '/include')"` \
-    -I `python -c "import torch; print(torch.__path__[0] + '/include/torch/csrc/api/include')"` \
-    -L `python -c "import torch; print(torch.__path__[0] + '/lib')"` \
-    -l torch \
-    -l torch_cpu \
-    -l torch_cuda \
-    -l c10 \
-    kernel/kernel.cpp \
-    kernel/bind.cpp \
-    -o kernel/kernel$(python3-config --extension-suffix)
+# 拷贝动态库到kernel目录
+cp libcpp_kernel.so ../kernel/kernel$(python3-config --extension-suffix)
 ```
-- 对于cmake用户, 可以将kernel/CMakeLists.txt移到项目跟路径，然后修改一下里面的路径, 基本就可以用了。最后将so重命名为`kernel$(python3-config --extension-suffix)`并放到kernel目录即可。
 
 
 
