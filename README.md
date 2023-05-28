@@ -178,7 +178,7 @@ python3 read_trt_profile.py
 ```bash
 cd ..
 ```
-5. 编译TensorRT C++测试文件与，测量pytorch与tensorRT最大精度误差, 同时完成c++部分的tensorRT forward动态库封装（可选，推荐）。
+5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差, 同时完成c++部分的tensorRT forward动态库封装（可选，推荐）。
 - 编译前需要安装libtorch, 去官网下载安装即可。
 - 正式编译
 ```bash
