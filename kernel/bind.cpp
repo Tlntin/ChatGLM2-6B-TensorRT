@@ -5,7 +5,7 @@
 namespace py = pybind11;
 
 PYBIND11_MODULE(example, m) {
-    py::class_<Kernel>(m, "Kernel")
+    py::class_<Kernel, std::shared_ptr<Kernel>>(m, "Kernel")
         .def(py::init<const std::string&, int>())
         .def("forward", (std::vector<torch::Tensor> (Kernel::*)(
             const torch::Tensor&,
