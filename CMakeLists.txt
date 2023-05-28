@@ -4,7 +4,13 @@ project(inference_project)
 set(CMAKE_CXX_STANDARD 17)
 
 # Find and include LibTorch
-set(CMAKE_PREFIX_PATH /usr/local/libtorch/share/cmake)
+execute_process(
+    COMMAND python -c "import torch; print(torch.__path__[0] + '/share/cmake')"
+    OUTPUT_VARIABLE PYTORCH_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+# set(CMAKE_PREFIX_PATH /usr/local/libtorch/share/cmake)
+set(CMAKE_PREFIX_PATH ${PYTORCH_DIR})
 find_package(Torch REQUIRED)
 include_directories(${TORCH_INCLUDE_DIRS})
 include_directories(${PROJECT_SOURCE_DIR}/include)
@@ -48,4 +54,4 @@ target_link_libraries(cpp_kernel
 add_executable(inference_test inference_test.cpp)
 
 # Link against LibTorch, CUDA kernel and TensorRT
-target_link_libraries(inference_test ${TORCH_LIBRARIES} ${CUDA_KERNEL_NAME} ${TENSOR_RT_LIB})
+target_link_libraries(inference_test ${TORCH_LIBRARIES} kernel ${TENSOR_RT_LIB})

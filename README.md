@@ -179,7 +179,8 @@ python3 read_trt_profile.py
 cd ..
 ```
 5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差, 同时完成c++部分的tensorRT forward动态库封装（可选，推荐）。
-- 编译前需要安装libtorch, 去官网下载安装即可。
+- 注意：编译inference_test需要安装libtorch, 去官网下载安装即可, 然后将CMake的`set(CMAKE_PREFIX_PATH ${PYTORCH_DIR})`换成`set(CMAKE_PREFIX_PATH /usr/local/libtorch/share/cmake)`即可。
+- 注意：编译pybind11的动态库则保持目前的状态即可，可以忽略现在的报错。
 - 正式编译
 ```bash
 mkdir build && cd build
