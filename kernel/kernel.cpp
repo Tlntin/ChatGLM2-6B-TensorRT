@@ -118,9 +118,9 @@ Kernel::Kernel (const std::string engine_path, int batch_size) : batch_size_(bat
 
 Kernel::~Kernel() {
   // kernel free
-  std::cout << "free stream1" << std::endl;
+  std::cout << GREEN << "INFO: free stream1" << NONE << std::endl;
   cudaStreamDestroy(this->stream_1_);
-  std::cout << "free stream2" << std::endl;
+  std::cout << GREEN << "INFO: free stream2" << NONE << std::endl;
   cudaStreamDestroy(this->stream_2_);
 }
 
@@ -190,7 +190,7 @@ void Kernel::vertify_io_number() {
       + std::to_string(n_profile) + " profiles"
     );
   }
-  std::cout << "number of profile: " << n_profile << std::endl;
+  std::cout << GREEN << "number of profile: " << n_profile << NONE << std::endl;
 }
 
 void Kernel::init_execute_context() {

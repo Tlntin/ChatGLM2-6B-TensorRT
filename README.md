@@ -190,23 +190,17 @@ make
 ./inference_test
 
 ```
-6. 安装c++部分的tensorRT forward动态库封装
 
+### 第三步，推理(还不稳定, bug超过的)
+1. 在普通模式下运行对话
 ```bash
-cd kernel
-python3 setup.py install
-cd ..
-```
-- 测试一下能否读取TensorRT文件。
-```bash
-python3 -c "from ckernel import Kernel; Kernel('models/models/chatglm6b-bs1-12.5G.plan', 1);"
+python demo.py
 ```
 
-
-
-### 第三步，推理
-1. 目前已经有大佬开源了推理脚本，你可以直接用现成的。你只需要做将它提供的编译好的tensorRT文件，换成你编译好的tensorRT文件所在路径即可，目前导出的TensorRT路径在项目的`models/chatglm6b-bs1.plan`路径。
-- 大佬开源的推理脚本地址：[地址](https://huggingface.co/TMElyralab/lyraChatGLM), 该推理脚本配套使用教程：[地址](https://www.http5.cn/index.php/archives/19/)
+2. 在流等式传输下运行对话
+```bash
+python cli_demo.py
+```
 
 
 ### 待做（画饼）

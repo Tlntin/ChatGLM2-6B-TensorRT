@@ -2,6 +2,7 @@ import os
 # from transformers import AutoTokenizer, AutoModel, AutoConfig
 import torch
 import sys
+import time
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
 sys.path.append(project_dir)
@@ -45,8 +46,18 @@ model = model.half().cuda()
 model.eval()
 
 input_text = "你好"
-response, history = model.chat(tokenizer, input_text, history=[])
-print(response)
+# test chat speed
+all_res = []
+st = time.time()
+for i in range(10):
+    responses, history = model.chat(tokenizer=tokenizer, query=input_text)
+    all_res.append(responses)
+et = time.time()
+print(all_res)
+tokens = tokenizer.encode("".join(all_res), return_tensors="pt")[0]
+token_num = len(tokens)
+speed = round(token_num / (et - st), 1)
+print("speed: {} tokens/s".format(speed))
 # model = model.cpu().float()
 # model.eval()
 

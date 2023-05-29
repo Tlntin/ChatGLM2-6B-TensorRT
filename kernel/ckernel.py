@@ -1,9 +1,8 @@
 import os
 import torch
 import pybind11
-from setuptools import setup, Extension
 from torch.utils import cpp_extension
-from torch.utils.cpp_extension import BuildExtension, CUDAExtension
+from torch.utils.cpp_extension import load
 
 input_dirs = cpp_extension.include_paths()
 now_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,22 +19,31 @@ torch_lib_dir = os.path.join(torch.__path__[0], "lib")
 library_dirs.append(torch_lib_dir)
 libraries.extend(["torch", "torch_cuda", "torch_cpu", "c10", "cudart", "c10_cuda"])
 library_dirs.append(pybind11.get_include(False))
-extra_link_args = ["-D_GLIBCXX_USE_CXX11_ABI=1", "-std=c++17"]
-# extra_link_args = ["-D_GLIBCXX_USE_CXX11_ABI=0"]
-#   "-L/usr/local/cuda/lib64", "-lnvinfer", f"-L{torch_lib_dir}"]
+extra_link_args = [
+    "-std=c++17",
+    "-L/usr/local/cuda/lib64",
+    f"-L{torch_lib_dir}",
+  ]
+extra_cuda_cflags = [
+    "-std=c++17",
+    "-L/usr/local/cuda/lib64",
+    f"-L{torch_lib_dir}",
+    "-lnvinfer"
+]
 
-setup(name='ckernel',
-      version="0.0.1",
-      ext_modules=[
-        CUDAExtension(
-          name='ckernel',
-          sources=['kernel.cpp', "bind.cpp"],
-          include_dirs=input_dirs,
-          language="c++",
-          extra_link_args=extra_link_args,
-          libraries=libraries,
-          library_dirs=library_dirs
-        )
-      ],
-      cmdclass={'kernel': BuildExtension}
-    )
+
+sources=['kernel.cpp', "bind.cpp"]
+sources = [os.path.join(now_dir, s) for s in sources]
+ckernel = load(
+  name='ckernel',
+  sources=sources,
+  extra_include_paths=input_dirs,
+  extra_cflags=extra_link_args,
+  extra_cuda_cflags=extra_cuda_cflags,
+  extra_ldflags=extra_cuda_cflags,
+  with_cuda=True,
+  verbose=False
+)
+# print(ckernel)
+# print(ckernel.Kernel)
+# print(ckernel.Kernel.forward)

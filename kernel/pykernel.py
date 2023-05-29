@@ -8,6 +8,7 @@ import re
 from .logits_processor import *
 
 
+
 class Kernel(nn.Module):
     def __init__(self, engine_path: str, batch_size: int):
         self.logger_ = trt.Logger(trt.Logger.INFO)
