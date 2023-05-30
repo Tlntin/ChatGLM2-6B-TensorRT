@@ -8,8 +8,8 @@ import os
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
 # model_dir = os.path.join(project_dir, "chatglm_6b")
-onnx_path = os.path.join(project_dir, "onnx_output", "chatglm_6b.onnx")
-new_onnx_dir = os.path.join(project_dir, "new_onnx_output")
+onnx_path = os.path.join(project_dir, "output" ,"onnx_output", "chatglm_6b.onnx")
+new_onnx_dir = os.path.join(project_dir, "output", "new_onnx_output")
 if not os.path.exists(new_onnx_dir):
     os.mkdir(new_onnx_dir)
 new_onnx_path = os.path.join(new_onnx_dir, "chatglm_6b.onnx")
@@ -28,9 +28,9 @@ print(session.get_providers())
 
 # cuda device id
 device_id = 0
-input_ids = np.array([[1, 5, 74874, 130001, 130004]], dtype=np.int32)
+input_ids = np.array([[1, 5, 74874, 130001, 130004]], dtype=np.int64)
 print("input_id.shape", input_ids.shape)
-position_ids = np.array([[[0, 1, 2, 2, 2], [0, 0, 0, 1, 1]]], dtype=np.int32)
+position_ids = np.array([[[0, 1, 2, 2, 2], [0, 0, 0, 1, 1]]], dtype=np.int64)
 attention_mask = np.array(
     [[[
         [False, False, False, False, True],

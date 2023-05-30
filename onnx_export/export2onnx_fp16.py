@@ -64,8 +64,8 @@ print("speed: {} tokens/s".format(speed))
 device = 'cuda'
 # --- prepare data for input1 ---
 input_ids = tokenizer([input_text], return_tensors="pt")["input_ids"]
-input_ids = input_ids.to(device=device).int()
-position_ids = torch.tensor([[[0, 1, 2, 2], [0, 0, 0, 1]]], device=device).int()
+input_ids = input_ids.to(device=device)
+position_ids = torch.tensor([[[0, 1, 2, 2], [0, 0, 0, 1]]], device=device)
 attention_mask = torch.tensor(
     [[[
         [False, False, False, True],
@@ -94,8 +94,8 @@ print("one past_key_shape for input 1 is ", past_key_values_1[0][0].shape)
 print("logits for input1 shape is ", output_dict1["logits"].shape)
 
 # --- prepare data for input2 ---
-input_ids2 = torch.tensor([[5]], device=device).int()
-position_ids2 = torch.tensor([[[2], [2]]], device=device).int()
+input_ids2 = torch.tensor([[5]], device=device)
+position_ids2 = torch.tensor([[[2], [2]]], device=device)
 attention_mask2 = torch.tensor([[[[False]]]], device=device, dtype=torch.bool)
 output_dict2 = model.forward(
     input_ids=input_ids2,
@@ -175,10 +175,45 @@ past_key_values = [
     [torch.zeros(0, 1, 32, 128, device=device).half() for _ in range(2)]
     for _ in range(28)
 ]
+
+# ---prepare for onnx export ---
+scores = output_dict1["logits"][:, -1, :]
+probs = torch.nn.functional.softmax(scores, dim=-1)
+next_token = torch.multinomial(probs, num_samples=1)
+next_attention_mask = attention_mask[..., -1:, -1:]
+next_position_ids = torch.cat((position_ids[:, :-1, -1:], position_ids[:, -1:, -1:] + torch.tensor(1, dtype=position_ids.dtype)), dim=1)
+next_input_ids = torch.cat((next_token,next_token,next_token,next_token), dim=1)
+next_position_ids = torch.cat((next_position_ids,next_position_ids,next_position_ids,next_position_ids), dim=2)
+next_attention_mask = torch.cat((next_attention_mask,next_attention_mask,next_attention_mask,next_attention_mask), dim=2)
+next_attention_mask = torch.cat((next_attention_mask,next_attention_mask,next_attention_mask,next_attention_mask), dim=3)
+next_past_key_values = output_dict1["past_key_values"]
+print(
+    "next_input_ids shape and dtype ",
+    next_input_ids.shape, next_input_ids.dtype
+)
+print(
+    "next_position_ids shape and dtype ",
+    next_position_ids.shape, next_position_ids.dtype
+)
+print(
+    "next_attention_mask shape and dtype ",
+    next_attention_mask.shape, next_attention_mask.dtype
+)
+print(
+    "one next_past_key_values shape and dtype ",
+    next_past_key_values[0][0].shape, next_past_key_values[0][0].dtype
+)
+
 with torch.no_grad():
     torch.onnx.export(
-        model, (input_ids,position_ids,attention_mask, past_key_values),
-        onnx_model_path,
+        model, 
+        args=(
+            next_input_ids, 
+            next_position_ids,
+            next_attention_mask,
+            next_past_key_values
+        ),
+        f=onnx_model_path,
         opset_version=18,
         input_names=input_names,
         output_names=output_names,

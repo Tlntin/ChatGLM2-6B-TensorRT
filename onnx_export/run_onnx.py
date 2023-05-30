@@ -16,7 +16,7 @@ input_text = "你好"
 # print(input_ids)
 input_ids = np.array([[1, 5, 74874, 130001, 130004]], dtype=np.int64)
 print("input_id.shape", input_ids.shape)
-position_ids = np.array([[[0, 1, 2, 2, 2], [0, 0, 0, 1, 1]]])
+position_ids = np.array([[[0, 1, 2, 2, 2], [0, 0, 0, 1, 1]]], dtype=np.int64)
 attention_mask = np.array(
     [[[
         [False, False, False, False, True],
