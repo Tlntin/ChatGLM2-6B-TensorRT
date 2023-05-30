@@ -177,42 +177,61 @@ past_key_values = [
 ]
 
 # ---prepare for onnx export ---
-scores = output_dict1["logits"][:, -1, :]
-probs = torch.nn.functional.softmax(scores, dim=-1)
-next_token = torch.multinomial(probs, num_samples=1)
-next_attention_mask = attention_mask[..., -1:, -1:]
-next_position_ids = torch.cat((position_ids[:, :-1, -1:], position_ids[:, -1:, -1:] + torch.tensor(1, dtype=position_ids.dtype)), dim=1)
-next_input_ids = torch.cat((next_token,next_token,next_token,next_token), dim=1)
-next_position_ids = torch.cat((next_position_ids,next_position_ids,next_position_ids,next_position_ids), dim=2)
-next_attention_mask = torch.cat((next_attention_mask,next_attention_mask,next_attention_mask,next_attention_mask), dim=2)
-next_attention_mask = torch.cat((next_attention_mask,next_attention_mask,next_attention_mask,next_attention_mask), dim=3)
-next_past_key_values = output_dict1["past_key_values"]
-print(
-    "next_input_ids shape and dtype ",
-    next_input_ids.shape, next_input_ids.dtype
+query = "你好"
+input_ids = tokenizer.encode(query, return_tensors="pt").cuda()
+input_ids = torch.cat((input_ids, input_ids, input_ids), dim=0)
+batch_size, seq_length = input_ids.shape
+context_lengths = [seq.tolist().index(tokenizer.bos_token_id) for seq in input_ids]
+attention_mask = torch.ones((batch_size, seq_length, seq_length), device=input_ids.device)
+attention_mask.tril_()
+for i, context_length in enumerate(context_lengths):
+    attention_mask[i, :, :context_length] = 1
+attention_mask.unsqueeze_(1)
+attention_mask = (attention_mask < 0.5).bool()
+MASK, gMASK = tokenizer.mask_token_id, tokenizer.gmask_token_id
+is_gmasks = (input_ids == gMASK).to(torch.int32)
+is_masks = (input_ids == MASK).to(torch.int32)
+use_gmasks = torch.sum(is_gmasks, dim=1) > 0
+mask_positions = torch.where(use_gmasks, torch.argmax(is_gmasks, dim=1), torch.argmax(is_masks, dim=1)).to(torch.int32).unsqueeze(1)
+batch_size, seq_length = input_ids.shape
+if use_gmasks is None:
+    use_gmasks = [False] * batch_size
+context_lengths = [seq.tolist().index(tokenizer.bos_token_id) for seq in input_ids]
+position_ids = torch.arange(seq_length, dtype=torch.long, device=input_ids.device).unsqueeze(0).repeat(batch_size, 1)
+for i, context_length in enumerate(context_lengths):
+    position_ids[i, context_length:] = mask_positions[i]
+block_position_ids = [torch.cat((
+    torch.zeros(context_length, dtype=torch.long, device=input_ids.device),
+    torch.arange(seq_length - context_length, dtype=torch.long, device=input_ids.device) + 1
+)) for context_length in context_lengths]
+block_position_ids = torch.stack(block_position_ids, dim=0)
+position_ids = torch.stack((position_ids, block_position_ids), dim=1)
+past_key_values = tuple(tuple(torch.zeros(0, input_ids.size(0), 32, 128, device=input_ids.device).half() for _ in range(2)) for _ in range(28))
+# input_ids = input_ids.to(torch.int32)
+# position_ids = position_ids.to(torch.int32)
+attention_mask = attention_mask.to(torch.bool)
+outputs = model.forward(
+    input_ids=input_ids,
+    position_ids=position_ids,
+    attention_mask=attention_mask,
 )
-print(
-    "next_position_ids shape and dtype ",
-    next_position_ids.shape, next_position_ids.dtype
+next_past_key_values = outputs.past_key_values
+fake_attention_mask = torch.cat((attention_mask,attention_mask), dim=3)
+next_outputs = model.forward(
+    input_ids=input_ids,
+    position_ids=position_ids,
+    attention_mask=fake_attention_mask,
+    past_key_values=next_past_key_values,
 )
-print(
-    "next_attention_mask shape and dtype ",
-    next_attention_mask.shape, next_attention_mask.dtype
-)
-print(
-    "one next_past_key_values shape and dtype ",
-    next_past_key_values[0][0].shape, next_past_key_values[0][0].dtype
-)
+print("input_ids shape:", input_ids.shape, "; type:", input_ids.dtype)
+print("position_ids shape:", position_ids.shape, "; type: ", input_ids.dtype)
+print("fake attention_mask shape:",fake_attention_mask.shape, "; type: ", fake_attention_mask.dtype)
+print("on past_key_value shape: ", next_past_key_values[0][0].shape, "; type:", next_past_key_values[0][0].dtype)
 
 with torch.no_grad():
     torch.onnx.export(
-        model, 
-        args=(
-            next_input_ids, 
-            next_position_ids,
-            next_attention_mask,
-            next_past_key_values
-        ),
+        model,
+        (input_ids,position_ids,fake_attention_mask,next_past_key_values),
         f=onnx_model_path,
         opset_version=18,
         input_names=input_names,
