@@ -12,7 +12,7 @@ batch_size = 1
 max_length  = 512
 opt_length = max_length // 2
 # if use force use fp16, may reduce the accuracy and memory usage
-force_use_fp16 = True
+force_use_fp16 = False
 # default 3, max 5, 5 is the best but need more GPU memory and time
 builder_optimization_level = 3
 # lower memory GPU can try this option with True \

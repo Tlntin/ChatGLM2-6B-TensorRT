@@ -93,7 +93,7 @@ pip install -r requirements.txt
  - 使用方法
  ```bash
  # 建议写到~/.bashrc
- export CUDA_MODULE_LOADINGLAZY=LAZY
+ export CUDA_MODULE_LOADING=LAZY
  ```
 
 ### 第一步：将pytorch导出成onnx
