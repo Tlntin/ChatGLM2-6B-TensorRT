@@ -64,8 +64,8 @@ print("speed: {} tokens/s".format(speed))
 device = 'cuda'
 # --- prepare data for input1 ---
 input_ids = tokenizer([input_text], return_tensors="pt")["input_ids"]
-input_ids = input_ids.to(device=device)
-position_ids = torch.tensor([[[0, 1, 2, 2], [0, 0, 0, 1]]], device=device)
+input_ids = input_ids.to(device=device).int()
+position_ids = torch.tensor([[[0, 1, 2, 2], [0, 0, 0, 1]]], device=device).int()
 attention_mask = torch.tensor(
     [[[
         [False, False, False, True],
@@ -94,8 +94,8 @@ print("one past_key_shape for input 1 is ", past_key_values_1[0][0].shape)
 print("logits for input1 shape is ", output_dict1["logits"].shape)
 
 # --- prepare data for input2 ---
-input_ids2 = torch.tensor([[5]], device=device)
-position_ids2 = torch.tensor([[[2], [2]]], device=device)
+input_ids2 = torch.tensor([[5]], device=device).int()
+position_ids2 = torch.tensor([[[2], [2]]], device=device).int()
 attention_mask2 = torch.tensor([[[[False]]]], device=device, dtype=torch.bool)
 output_dict2 = model.forward(
     input_ids=input_ids2,
@@ -207,6 +207,7 @@ block_position_ids = [torch.cat((
 block_position_ids = torch.stack(block_position_ids, dim=0)
 position_ids = torch.stack((position_ids, block_position_ids), dim=1)
 past_key_values = tuple(tuple(torch.zeros(0, input_ids.size(0), 32, 128, device=input_ids.device).half() for _ in range(2)) for _ in range(28))
+# to support onnx runtime
 # input_ids = input_ids.to(torch.int32)
 # position_ids = position_ids.to(torch.int32)
 attention_mask = attention_mask.to(torch.bool)
