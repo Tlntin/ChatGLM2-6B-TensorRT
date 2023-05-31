@@ -203,15 +203,15 @@ python demo.py
 - GPU: nvidia 3090(24G)
 - 内存：64G金士顿3200
 
-2. 原版 fp16速度：27-29token/s
-3. TensorRT fp16版：39-42token/s
+2. 原版 fp16 batch_size=1 速度：27-29token/s
+3. TensorRT fp16 batch_size=1 速度：39-42token/s
 4. 综合提速：34.4%-55.5%
 
 
 
 
 ### 待做（画饼）
-- [ ] 自己实现一个推理方案，支持python/c++
+- [x] 自己实现一个推理方案，支持python/c++
 - [ ] 将FastTransformer编译为tensorRT的一个插件，以实现更快的加速方案。
 
 ### 参考链接
