@@ -8,16 +8,6 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(ckernel, m) {
     py::class_<Kernel>(m, "Kernel")
-        .def(py::init<const std::string&, int>())
-        .def("forward", py::overload_cast<
-                const torch::Tensor &,
-                const torch::Tensor &,
-                const torch::Tensor &
-            >(&Kernel::forward))
-        .def("forward", py::overload_cast<
-                const torch::Tensor &,
-                const torch::Tensor &,
-                const torch::Tensor &,
-                const std::vector<std::vector<torch::Tensor>>&
-            >(&Kernel::forward));
+        .def(py::init<const std::string&, int>(), py::arg("model_path"), py::arg("batch_size"))
+        .def("forward", &Kernel::forward, py::arg("input_tensors"));
 }

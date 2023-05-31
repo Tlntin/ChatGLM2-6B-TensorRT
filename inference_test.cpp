@@ -85,11 +85,8 @@ int test1(Kernel &kernel) {
   torch::Tensor input_ids = container.attr("input_ids").toTensor().to(device);
   torch::Tensor position_ids = container.attr("position_ids").toTensor().to(device);
   torch::Tensor attention_mask = container.attr("attention_mask").toTensor().to(device);
-  std::vector<torch::Tensor> d_output = kernel.forward(
-    input_ids,
-    position_ids,
-    attention_mask
-  );
+  std::vector<torch::Tensor> input_tensors({input_ids, position_ids, attention_mask});
+  std::vector<torch::Tensor> d_output = kernel.forward(input_tensors);
   std::cout << "output size: " << d_output.size() << std::endl;
   std::cout << "==================================" << std::endl;
   std::cout << "start compare value for test1" << std::endl;
@@ -117,9 +114,9 @@ int test2(Kernel &kernel) {
   torch::Tensor input_ids = container.attr("input_ids").toTensor().to(device);
   torch::Tensor position_ids = container.attr("position_ids").toTensor().to(device);
   torch::Tensor attention_mask = container.attr("attention_mask").toTensor().to(device);
-  std::vector<std::vector<torch::Tensor>> past_key_values;
-  // load past key and value
   std::cout << "loading past key and value" << std::endl;
+  std::vector<torch::Tensor> input_tensors({input_ids, position_ids, attention_mask});
+  // load past key and value
   for (int i = 0; i < 28; ++i) {
     std::string past_key_name = \
       "past_key_values."+ std::to_string(i) + ".decorder.key";
@@ -127,16 +124,15 @@ int test2(Kernel &kernel) {
       "past_key_values." + std::to_string(i) + ".decorder.value";
     torch::Tensor past_key = container.attr(past_key_name).toTensor().to(device);
     torch::Tensor past_value = container.attr(past_value_name).toTensor().to(device);
-    std::vector<torch::Tensor> temp_({past_key, past_value});
-    past_key_values.push_back(temp_);
+    input_tensors.push_back(past_key);
+    input_tensors.push_back(past_value);
   }
+  // for (int i = 0; i < kernel.n_input_; ++i) {
+  //   std::cout << "tensor name " << i << ": " << kernel.tensor_names_[i] << std::endl;
+  //   std::cout << "input tensor " << i << " size: " << input_tensors[i].sizes() << std::endl;
+  // }
   std::cout << "load past key and value done!" << std::endl;
-  std::vector<torch::Tensor> d_output = kernel.forward(
-    input_ids,
-    position_ids,
-    attention_mask,
-    past_key_values
-  );
+  std::vector<torch::Tensor> d_output = kernel.forward(input_tensors);
   std::cout << "==================================" << std::endl;
   std::cout << "start compare value for test2" << std::endl;
   compare_value(kernel, d_output, "../output/pt_output2.pt");

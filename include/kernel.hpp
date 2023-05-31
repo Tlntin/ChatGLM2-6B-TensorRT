@@ -63,15 +63,7 @@ class Kernel {
     void vertify_io_number();
     void init_execute_context();
     std::vector<torch::Tensor> forward(
-      const torch::Tensor & input_ids,
-      const torch::Tensor & position_ids,
-      const torch::Tensor & attention_mask
-    );
-    std::vector<torch::Tensor> forward(
-      const torch::Tensor & input_ids,
-      const torch::Tensor & position_ids,
-      const torch::Tensor & attention_mask,
-      const std::vector<std::vector<torch::Tensor>> & past_key_values
+      std::vector<torch::Tensor> & input_tensors
     );
     void set_input_for_context1(const int seq_length);
     void set_input_for_context2(const int past_seq_length);
@@ -80,14 +72,9 @@ class Kernel {
       std::vector<std::size_t> & bytes_list,
       std::vector<std::size_t> & type_bytes_list
     );
-    std::vector<torch::Tensor> run_gpu_inference(
-      void * d_input[],
-      const int seq_len,
-      const int present_key_len,
-      const std::size_t input_size,
-      torch::Device device,
-      std::vector<std::size_t> & bytes_list,
-      std::vector<std::size_t> & type_bytes_list,
+    void run_gpu_inference(
+      const std::vector<torch::Tensor> & input_tensors,
+      std::vector<torch::Tensor> & output_tensors,
       std::shared_ptr<nvinfer1::IExecutionContext> & context, 
       cudaStream_t & stream
     );

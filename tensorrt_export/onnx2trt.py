@@ -9,8 +9,8 @@ from tensorrt import MemoryPoolType, PreviewFeature
 
 # default is 1, maybe you can try 2, 4, 8, 16
 batch_size = 1
-max_length  = 512
-opt_length = max_length // 2
+max_length  = 2048
+opt_length = max_length
 # if use force use fp16, may reduce the accuracy and memory usage
 force_use_fp16 = False
 # default 3, max 5, 5 is the best but need more GPU memory and time

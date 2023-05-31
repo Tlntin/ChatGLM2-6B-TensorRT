@@ -2,17 +2,15 @@ import os
 import platform
 import signal
 from transformers import AutoTokenizer, AutoConfig
-from stream_demo import ChatGLMForConditionalGeneration
+# from stream_demo import ChatGLMForConditionalGeneration
+from demo import Model
 import readline
 
-tokenizer = AutoTokenizer.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
-config = AutoConfig.from_pretrained("THUDM/chatglm-6b", trust_remote_code=True)
-model = ChatGLMForConditionalGeneration(
-    config=config,
+tokenizer = AutoTokenizer.from_pretrained("chatglm_6b", trust_remote_code=True)
+model = Model(
     engine_path="models/chatglm6b-bs1-12.5G.plan",
     batch_size=1, 
-    device="cuda:0"
-).half().cuda()
+)
 
 os_name = platform.system()
 clear_command = 'cls' if os_name == 'Windows' else 'clear'

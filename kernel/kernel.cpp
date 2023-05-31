@@ -209,132 +209,125 @@ void Kernel::init_execute_context() {
 }
 
 std::vector<torch::Tensor> Kernel::forward(
-  const torch::Tensor & input_ids,
-  const torch::Tensor & position_ids,
-  const torch::Tensor & attention_mask
+  std::vector<torch::Tensor> & input_tensors
 ) {
-  // forward for context 1
-  if (input_ids.size(0) != this->batch_size_ ) {
+  // check batch size
+  /*
+  // input_tensors[0] is input_ids
+  if (input_tensors[0].size(0) != this->batch_size_ ) {
     throw std::runtime_error(
       "input_ids batch size is not correct, must be " \
       + std::to_string(this->batch_size_)
     );
   }
-  if (position_ids.size(0) != this->batch_size_) {
+  // input_tensors[1] is position_ids
+  if (input_tensors[1].size(0) != this->batch_size_) {
     throw std::runtime_error(
       "position_ids batch size is not correct, must be " \
       + std::to_string(this->batch_size_)
     );
   }
-
-  if (attention_mask.size(0) != this->batch_size_) {
-    throw std::runtime_error(
-      "attention_mask batch size is not correct, must be " \
-      + std::to_string(this->batch_size_)
-    );
-  }
-  int seq_length = input_ids.size(1);
-  this->set_input_for_context1(seq_length);
-  // std::vector<std::size_t> size_list(this->n_total_);
+  */
+  const int seq_len = input_tensors[0].size(1);
+  int present_key_len = 0;
+  // temp code to test the inference with empty past_key_values
+  int input_size = this->n_input_;
+  torch::Device device = input_tensors[0].device();
   std::vector<std::size_t> bytes_list(this->n_total_);
   std::vector<std::size_t> type_bytes_list(this->n_total_);
-  this->get_tensor_size(this->context_1_, bytes_list, type_bytes_list);
-  const int seq_len = input_ids.size(1);
-  const int present_key_len = input_ids.size(1);
-  torch::Device device = input_ids.device();
-  // number of input
-  const std::size_t input_size = 3;
-  void * d_input[3] = {
-    input_ids.data_ptr(), position_ids.data_ptr(), attention_mask.data_ptr()
-  };
-  // convert attention_mask to char
-  return std::move(
-    this->run_gpu_inference(
-      d_input,
-      seq_len,
-      present_key_len,
-      input_size,
-      device,
-      bytes_list,
-      type_bytes_list,
-      this->context_1_,
-      this->stream_1_
+  std::shared_ptr<nvinfer1::IExecutionContext> context;
+  cudaStream_t stream;
+  if (input_tensors.size() == 3) {
+    /*
+    // input_tensors[2] is attention_mask
+    if (input_tensors[2].size(0) != this->batch_size_) {
+      throw std::runtime_error(
+        "attention_mask batch size is not correct, must be " \
+        + std::to_string(this->batch_size_)
+      );
+    }
+    */
+    int seq_length = input_tensors[0].size(1);
+    this->set_input_for_context1(seq_length);
+    // std::vector<std::size_t> size_list(this->n_total_);
+    
+    this->get_tensor_size(this->context_1_, bytes_list, type_bytes_list);
+    present_key_len = seq_len;
+    // fill the empty tensor to d_input
+    for (int i = 3; i < this->n_input_; ++i) {
+      torch::Tensor empty_tensor = torch::zeros(
+        {1},
+        torch::dtype(torch::kFloat16)
+      ).to(device);
+      input_tensors.push_back(std::move(empty_tensor));
+    }
+    context = this->context_1_;
+    stream = this->stream_1_;
+  } else {
+    /*
+    if (past_key_values.size() != 28) {
+      throw std::runtime_error(
+        "past_key_values.size() != 28"
+      );
+    }
+    if (past_key_values[0].size() != 2) {
+      throw std::runtime_error(
+        "past_key_values[0].size() != 2"
+      );
+    }
+    if (past_key_values[0][0].size(1) != this->batch_size_) {
+      throw std::runtime_error(
+        "past_key_values[0][0] batch_size is not correct, must be " \
+        + std::to_string(this->batch_size_)
+      );
+    }
+    */
+    // set input shape for context 2
+    int past_seq_length = input_tensors[3].size(0);
+    // std::cout << "past_seq_length: " << past_seq_length << std::endl;
+    this->set_input_for_context2(past_seq_length);
+    // get tensor size for context2
+    this->get_tensor_size(this->context_2_, bytes_list, type_bytes_list);
+    MY_LOG("get tensor size for context 2 ok!\n");
+    present_key_len = seq_len + past_seq_length;
+    context = this->context_2_;
+    stream = this->stream_2_;
+  }
+
+  // prepare output
+  std::vector<torch::Tensor> output_tensors;
+  MY_LOG("seq len: %d\n", seq_len);
+  MY_LOG("present_key_len: %d\n", present_key_len);
+  // output for present_key
+  for (int i = 0; i < this->n_output_ - 1; ++i) {
+    output_tensors.push_back(
+      std::move(
+        torch::zeros(
+          {present_key_len, this->batch_size_, 32, 128}, 
+          torch::dtype(torch::kFloat16)
+        ).to(device)
+      )
+    );
+  }
+  // output for logists
+  output_tensors.push_back(
+    std::move(
+      torch::zeros(
+        {this->batch_size_, seq_len, this->vocab_size_},
+        torch::dtype(torch::kFloat16)
+      ).to(device)
     )
   );
-}
 
-std::vector<torch::Tensor> Kernel::forward(
-  const torch::Tensor & input_ids,
-  const torch::Tensor & position_ids,
-  const torch::Tensor & attention_mask,
-  const std::vector<std::vector<torch::Tensor>> & past_key_values
-) {
-  // forward for context 2
-  // data shape vertification
-  if (input_ids.size(0) != this->batch_size_ ) {
-    throw std::runtime_error(
-      "input_ids batch size is not correct, must be " \
-      + std::to_string(this->batch_size_)
-    );
-  }
-  if (position_ids.size(0) != this->batch_size_) {
-    throw std::runtime_error(
-      "position_ids batch size is not correct, must be " \
-      + std::to_string(this->batch_size_)
-    );
-  }
-  if (past_key_values.size() != 28) {
-    throw std::runtime_error(
-      "past_key_values.size() != 28"
-    );
-  }
-  if (past_key_values[0].size() != 2) {
-    throw std::runtime_error(
-      "past_key_values.size() != 28"
-    );
-  }
-  if (past_key_values[0][0].size(1) != this->batch_size_) {
-    throw std::runtime_error(
-      "past_key_values[0][0] batch_size is not correct, must be " \
-      + std::to_string(this->batch_size_)
-    );
-  }
-  
-  // set input shape for context 2
-  int past_seq_length = past_key_values[0][0].size(0);
-  this->set_input_for_context2(past_seq_length);
-  // get tensor size for context2
-  std::vector<std::size_t> bytes_list(this->n_total_);
-  std::vector<std::size_t> type_bytes_list(this->n_total_);
-  this->get_tensor_size(this->context_2_, bytes_list, type_bytes_list);
-  MY_LOG("get tensor size for context 2 ok!\n");
-  const int seq_len = input_ids.size(1);
-  const int present_key_len = seq_len + past_seq_length;
-  torch::Device device = input_ids.device();
-  // number of input
-  const std::size_t input_size = this->n_input_;
-  void * d_input[input_size] = {
-    input_ids.data_ptr(), position_ids.data_ptr(), attention_mask.data_ptr()
-  };
-  for (int i = 0; i < 28; ++i) {
-    for (int j = 0; j < 2; ++j) {
-      d_input[i * 2 + j + 3] = past_key_values[i][j].data_ptr();
-    }
-  }
-  return std::move(
-    this->run_gpu_inference(
-      d_input,
-      seq_len,
-      present_key_len,
-      input_size,
-      device,
-      bytes_list,
-      type_bytes_list,
-      this->context_2_,
-      this->stream_2_
-  ));
+  this->run_gpu_inference(
+    input_tensors,
+    output_tensors,
+    context,
+    stream
+  );
+  return std::move(output_tensors);
 }
-
+    
     
 void Kernel::set_input_for_context1(const int seq_length) {
   this->context_1_->setInputShape(
@@ -410,75 +403,32 @@ void Kernel::get_tensor_size(
   MY_LOG("\n");
 }
 
-std::vector<torch::Tensor> Kernel::run_gpu_inference(
-  void * d_input[],
-  const int seq_len,
-  const int present_key_len,
-  const std::size_t input_size,
-  torch::Device device,
-  std::vector<std::size_t> & bytes_list,
-  std::vector<std::size_t> & type_bytes_list,
+void Kernel::run_gpu_inference(
+  const std::vector<torch::Tensor> & input_tensors,
+  std::vector<torch::Tensor> & output_tensors,
   std::shared_ptr<nvinfer1::IExecutionContext> & context, 
   cudaStream_t & stream
 ) {
   MY_LOG("=== prepare run gpu interference =\n");
-  std::vector<torch::Tensor> d_output;
-  MY_LOG("seq len: %d\n", seq_len);
-  MY_LOG("present_key_len: %d\n", present_key_len);
-  // output for present_key
-  for (int i = 0; i < this->n_output_ - 1; ++i) {
-    d_output.push_back(
-      torch::zeros(
-        {present_key_len, this->batch_size_, 32, 128}, 
-        torch::dtype(torch::kFloat16)
-      ).to(device)
-    );
-  }
-  // output for logists
-  d_output.push_back(
-    torch::zeros(
-      {this->batch_size_, seq_len, this->vocab_size_},
-      torch::dtype(torch::kFloat16)
-    ).to(device)
-  );
-  // set input for input_ids/position_id/attention_mask
-  for (int i = 0; i < 3; ++i) {
+  std::vector<void *> empty_ptr_list;
+  // set input
+  for (int i = 0; i < this->n_input_; ++i) {
     context->setTensorAddress(
       this->tensor_names_[i],
-      d_input[i]
+      input_tensors[i].data_ptr()
     );
-  }
-  // set input for past_key_values
-  if (input_size == 3) {
-    MY_LOG("input size is 3, we will use default zerro value to fill it");
-    void * default_value = nullptr;
-    int default_byte = type_bytes_list[3];
-    CHECK_CUDA(cudaMallocAsync((void **)(&default_value), default_byte, stream));
-    CHECK_CUDA(cudaMemsetAsync(default_value, 0, default_byte, stream));
-    for (int i = 3; i < this->n_input_; ++i) {
-      context->setTensorAddress(this->tensor_names_[i], default_value);
-    }
-  }
-  else {
-    for (int i = 3; i < this->n_input_; ++i) {
-      context->setTensorAddress(
-        this->tensor_names_[i],
-        d_input[i]
-      );
-    }
+
   }
   // set output
   for (int i = this->n_input_; i < this->n_total_; ++i) {
     context->setTensorAddress(
       this->tensor_names_[i],
-      d_output[i - this->n_input_].data_ptr()
+      output_tensors[i - this->n_input_].data_ptr()
     );
   }
   // run inference
   context->enqueueV3(stream);
-  // copy data back ? you don't need to copy data back
   cudaDeviceSynchronize();
   cudaStreamSynchronize(stream);
-  return d_output; 
 }
 
