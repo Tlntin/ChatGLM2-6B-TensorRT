@@ -156,16 +156,7 @@ python3 run_onnx_cpu.py
 - 问题：opset_version选择18？
 - 回答：因为最近onnx/tensorRT支持了layerNorm的实现，这个最低要求是17,而目前最高就是18/19,所以我选择18，当然你也可以选择17或者19试试。
 
-4. 验证onnx文件(目前fp16导出的onnx验证不通过，需要修改, fp32正常)
-- 因为我们导出onnx的时候，input_ids的shape是[1, 4], 为了验证其他的shape是否ok,我就编造了一个shape为[1, 5] input_id进行输入，观察模型结构是否正常。
-```bash
-python3 run_onnx.py
-```
-- 因为上文说到，`ChatGLMForConditionalGeneration`类的forward方法存在两种情况，一个是past_key_values为None一个不为None,为了验证past_key_values不为None的情况，我们需要执行下面这个文件，如果没报错，说明模型结构正常。
-```bash
-python3 run_onnx2.py
-```
-- 一般来说，还需要做pytorch和onnx输出情况差异对比，由于本次仅导出了fp32的文件，一般问题不大，所以这里省略该步骤。
+
 4. 返回上层目录
 ```bash
 cd ..
