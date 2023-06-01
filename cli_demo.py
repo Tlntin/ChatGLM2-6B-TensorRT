@@ -8,7 +8,7 @@ import readline
 
 tokenizer = AutoTokenizer.from_pretrained("chatglm_6b", trust_remote_code=True)
 model = Model(
-    engine_path="models/chatglm6b-bs1-12.5G.plan",
+    engine_path="models/chatglm6b-bs1-11.5G.plan",
     batch_size=1, 
 )
 

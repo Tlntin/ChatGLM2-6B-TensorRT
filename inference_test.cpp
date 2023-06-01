@@ -82,10 +82,14 @@ int test1(Kernel &kernel) {
     throw std::runtime_error("input path not exsist!");
   }
   torch::jit::script::Module container = torch::jit::load(input_path);
-  torch::Tensor input_ids = container.attr("input_ids").toTensor().to(device);
-  torch::Tensor position_ids = container.attr("position_ids").toTensor().to(device);
+  torch::Tensor input_ids = container.attr("input_ids").toTensor().to(device).to(torch::kInt32);
+  torch::Tensor position_ids = container.attr("position_ids").toTensor().to(device).to(torch::kInt32);
   torch::Tensor attention_mask = container.attr("attention_mask").toTensor().to(device);
   std::vector<torch::Tensor> input_tensors({input_ids, position_ids, attention_mask});
+  // for (int i = 0; i < kernel.n_input_; ++i) {
+  //   std::cout << "tensor name " << i << ": " << kernel.tensor_names_[i] << std::endl;
+  //   std::cout << "input tensor " << i << " size: " << input_tensors[i].sizes() << std::endl;
+  // }
   std::vector<torch::Tensor> d_output = kernel.forward(input_tensors);
   std::cout << "output size: " << d_output.size() << std::endl;
   std::cout << "==================================" << std::endl;
@@ -111,8 +115,8 @@ int test2(Kernel &kernel) {
     throw std::runtime_error("input path not exsist!");
   }
   torch::jit::script::Module container = torch::jit::load(input_path);
-  torch::Tensor input_ids = container.attr("input_ids").toTensor().to(device);
-  torch::Tensor position_ids = container.attr("position_ids").toTensor().to(device);
+  torch::Tensor input_ids = container.attr("input_ids").toTensor().to(device).to(torch::kInt32);
+  torch::Tensor position_ids = container.attr("position_ids").toTensor().to(device).to(torch::kInt32);
   torch::Tensor attention_mask = container.attr("attention_mask").toTensor().to(device);
   std::cout << "loading past key and value" << std::endl;
   std::vector<torch::Tensor> input_tensors({input_ids, position_ids, attention_mask});
@@ -133,6 +137,7 @@ int test2(Kernel &kernel) {
   // }
   std::cout << "load past key and value done!" << std::endl;
   std::vector<torch::Tensor> d_output = kernel.forward(input_tensors);
+  // std::cout << d_output[0] << std::endl;
   std::cout << "==================================" << std::endl;
   std::cout << "start compare value for test2" << std::endl;
   compare_value(kernel, d_output, "../output/pt_output2.pt");
@@ -142,7 +147,7 @@ int test2(Kernel &kernel) {
 }
 
 int main() {
-  Kernel kernel("../models/chatglm6b-bs1-12.5G.plan", 1);
+  Kernel kernel("../models/chatglm6b-bs1-18.5G.plan", 1);
   test1(kernel);
   test2(kernel);
 }

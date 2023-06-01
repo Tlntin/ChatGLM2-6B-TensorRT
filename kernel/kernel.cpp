@@ -254,10 +254,20 @@ std::vector<torch::Tensor> Kernel::forward(
     this->get_tensor_size(this->context_1_, bytes_list, type_bytes_list);
     present_key_len = seq_len;
     // fill the empty tensor to d_input
+    c10::TensorOptions past_key_dtype;
     for (int i = 3; i < this->n_input_; ++i) {
+      if (type_bytes_list[i] == 2) {
+        past_key_dtype = torch::dtype(torch::kFloat16);
+      } else if (type_bytes_list[i] == 4) {
+        past_key_dtype = torch::dtype(torch::kFloat32);
+      } else {
+        throw std::runtime_error(
+          "type_bytes_list["+ std::to_string(i) + "] is not correct, must be 2 or 4"
+        );
+      }
       torch::Tensor empty_tensor = torch::zeros(
         {1},
-        torch::dtype(torch::kFloat16)
+        past_key_dtype
       ).to(device);
       input_tensors.push_back(std::move(empty_tensor));
     }
@@ -299,14 +309,44 @@ std::vector<torch::Tensor> Kernel::forward(
   MY_LOG("seq len: %d\n", seq_len);
   MY_LOG("present_key_len: %d\n", present_key_len);
   // output for present_key
-  for (int i = 0; i < this->n_output_ - 1; ++i) {
+
+  c10::TensorOptions present_dtype;
+  for (int i = this->n_input_; i < this->n_total_ - 1; ++i) {
+    if (type_bytes_list[i] == 2) {
+      present_dtype = torch::dtype(torch::kFloat16);
+    } else if (type_bytes_list[i] == 4) {
+      present_dtype = torch::dtype(torch::kFloat32);
+    } else {
+      std::cout << 
+        RED << "type_bytes_list["+ std::to_string(i) +\
+           "] is not correct, must be 2 or 4" << 
+        NONE << std::endl;
+      std::cout << RED << "type_bytes_list["
+        << i 
+        <<"]: " 
+        << type_bytes_list[i] << 
+        NONE << std::endl;
+      throw std::runtime_error(
+        "type_bytes_list["+ std::to_string(i) + "] is not correct, must be 2 or 4"
+      );
+    }
     output_tensors.push_back(
-      std::move(
-        torch::zeros(
-          {present_key_len, this->batch_size_, 32, 128}, 
-          torch::dtype(torch::kFloat16)
-        ).to(device)
-      )
+        std::move(
+          torch::zeros(
+            {present_key_len, this->batch_size_, 32, 128}, 
+            present_dtype
+          ).to(device)
+        )
+      );      
+  }
+  c10::TensorOptions logist_type;
+  if (type_bytes_list[this->n_total_ - 1] == 2) {
+    logist_type = torch::dtype(torch::kFloat16);
+  } else if (type_bytes_list[this->n_total_ - 1] == 4) {
+    logist_type = torch::dtype(torch::kFloat32);
+  } else {
+    throw std::runtime_error(
+      "type_bytes_list["+ std::to_string(this->n_output_ - 1) + "] is not correct, must be 2 or 4"
     );
   }
   // output for logists
@@ -314,7 +354,7 @@ std::vector<torch::Tensor> Kernel::forward(
     std::move(
       torch::zeros(
         {this->batch_size_, seq_len, this->vocab_size_},
-        torch::dtype(torch::kFloat16)
+        logist_type
       ).to(device)
     )
   );
@@ -397,6 +437,7 @@ void Kernel::get_tensor_size(
     bytes_list[i] = type_size * size;
     MY_LOG("tensor bytes: %ld\n", bytes_list[i]);
     MY_LOG("tensor type: %s\n", data_type);
+    MY_LOG("type size: %ld\n", type_size);
     MY_LOG("\n");
   }
   MY_LOG("======= get tensor size ok ====");

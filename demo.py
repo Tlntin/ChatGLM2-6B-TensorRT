@@ -33,7 +33,7 @@ class Model(nn.Module):
         query: str,
         history = None,
         max_length: int = 2048,
-        max_new_tokens: int = 40,
+        max_new_tokens: int = 1024,
         num_beams=1,
         do_sample=True,
         top_p=0.7,
@@ -89,7 +89,7 @@ class Model(nn.Module):
         query: str,
         history = None,
         max_length: int = 2048,
-        max_new_tokens: int = 40,
+        max_new_tokens: int = 1024,
         num_beams=1,
         do_sample=True,
         top_p=0.7,
@@ -216,12 +216,16 @@ class Model(nn.Module):
 if __name__ == "__main__":
     from transformers import AutoTokenizer
     import time
+    from tqdm import trange
     tokenizer = AutoTokenizer.from_pretrained("chatglm_6b", trust_remote_code=True)
-    model = Model("models/chatglm6b-bs1-11.5G.plan", 1)
+    model = Model("models/chatglm6b-bs1-18.5G.plan", 1)
     all_res = []
     st = time.time()
-    for i in range(10):
-        responses, history = model.chat(tokenizer=tokenizer, query="你好, 帮忙用python写一个链表")
+    for i in trange(10):
+        responses, history = model.chat(
+            tokenizer=tokenizer,
+            query="你好, 请用python写一个链表。"
+        )
         all_res.append(responses)
     et = time.time()
     print(all_res)
