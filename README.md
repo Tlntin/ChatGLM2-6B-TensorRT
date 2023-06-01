@@ -127,14 +127,28 @@ cd onnx_export
 ```
 
 3. 执行export2onnx.py文件
+- for GPU显存 >= 24G, 该操作会利用GPU导出fp16的onnx文件, 导出后可以用run_onnx_cuda.py来校准一下精度看看是否。
 ```bash
-# 强烈推荐
-# for GPU显存 >= 24G, 该操作会利用GPU导出fp16的onnx文件, 相对来说更为推荐这个, 如果是刚好24G的显卡，可能会爆显存。
-python export2onnx_fp16.py
+# 导出模型
+python export2onnx.py --data_type=fp16
 
-# 这个导出的onnx比较大，并且转成的tensorRT也会很大
-# for GPU显存 < 24G, 该操作会利用CPU导出fp32格式的onnx
-python3 export2onnx_fp32.py
+# 准备校准的数据
+python3 export_compare_data.py --data_type=fp16
+
+# 测试cuda上面推理结果
+python3 run_onnx_cuda.py
+```
+
+- for GPU显存 < 24G, 该操作会利用CPU导出fp32格式的onnx, 导出后可以用`run_onnx_cpu.py`和`run_onnx_cpu2.py`校准精度。
+```bash
+# 导出模型 
+python3 export2onnx.py
+
+# 准备校准的数据
+python3 export_compare_data.py
+
+# 测试cpu上面的推理结果
+python3 run_onnx_cpu.py
 
 ```
 - 问题：这个输入输出怎么来的？
@@ -201,7 +215,7 @@ python demo.py
 1. 硬件平台：
 - CPU: i9-10900k
 - GPU: nvidia 3090(24G)
-- 内存：64G金士顿3200
+- 内存：64G金士顿 DDR4 3200
 
 2. 原版 fp16 batch_size=1 速度：27-29token/s
 3. TensorRT fp16 batch_size=1 速度：39-42token/s
