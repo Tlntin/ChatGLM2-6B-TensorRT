@@ -19,3 +19,4 @@ onnxruntime>=1.13.0
 # onnxruntime-gpu
 pybind11
 pytest
+# datasets
