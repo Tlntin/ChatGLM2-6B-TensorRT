@@ -131,6 +131,9 @@ def get_network_definition(trt_network):
             layer.precision = trt.DataType.FLOAT
             if l_next is not None:
                 l_next.precision = trt.DataType.FLOAT
+        else:
+            if force_use_fp16 and layer.get_output_type(0) == trt.float32: 
+                layer.precision = trt.DataType.HALF
     layer_type_path = os.path.join(output_dir, "layer_type.json")
     with open(layer_type_path, "wt") as f:
         json.dump(list(layer_type_set), f, indent=4)
@@ -156,7 +159,7 @@ config.flags = 1 << int(trt.BuilderFlag.FP16)
 # disable tf32
 config.flags = config.flags & ~( 1 << int(trt.BuilderFlag.TF32) )
 # use obey precision constraints
-config.flags = config.flags & (1 << int(trt.BuilderFlag.OBEY_PRECISION_CONSTRAINTS))
+config.flags = config.flags | (1 << int(trt.BuilderFlag.OBEY_PRECISION_CONSTRAINTS))
 config.set_memory_pool_limit(MemoryPoolType.WORKSPACE, 2 * 1024 * 1024 * 1024)
 
 # use prewview features
