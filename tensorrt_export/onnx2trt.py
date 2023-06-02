@@ -2,6 +2,7 @@ import tensorrt as trt
 import os
 import time
 from colored import fg, stylize
+import json
 # import onnx
 from polygraphy.backend.trt import network_from_onnx_path
 from itertools import tee
@@ -9,6 +10,8 @@ from tensorrt import MemoryPoolType, PreviewFeature
 
 # default is 1, maybe you can try 2, 4, 8, 16
 batch_size = 1
+# more speed, more memory
+use_time_cahce = False
 max_length  = 2048
 opt_length = max_length // 2
 # if use force use fp16, may reduce the accuracy and memory usage
@@ -45,7 +48,6 @@ class MyLogger(trt.ILogger):
 def get_network_profiles(trt_builder):
     # ----profile1 when past_key_values is None----
     profile1 = trt_builder.create_optimization_profile()
-    profile2 = trt_builder.create_optimization_profile()
     profile1.set_shape(
         "input_ids",
         (1, 1),
@@ -77,6 +79,7 @@ def get_network_profiles(trt_builder):
                 (0, batch_size, 32, 128),
             )
     # ----profile2 when past_key_values is not None----
+    profile2 = trt_builder.create_optimization_profile()
     profile2.set_shape(
         "input_ids",
         (1, 1),
@@ -116,47 +119,31 @@ def get_network_definition(trt_network):
         a, b = tee(iterable)
         next(b, None)
         return zip(a, b)
-    
+    layer_type_set = set() 
     num_layers = trt_network.num_layers 
     indices = list(range(num_layers))
     for i, i_next in pairwise(indices):
         layer = trt_network.get_layer(i)
         l_next = trt_network.get_layer(i_next)
-
-        if not all([
-            layer.get_output(i).is_execution_tensor
-            for i in range(layer.num_outputs)
-        ]):
-            continue
-
-        if layer.num_outputs > 0 and layer.get_output_type(0) != trt.float32:
-            continue
-
-        if layer.type == trt.LayerType.ELEMENTWISE and l_next.type == trt.LayerType.REDUCE:
-            layer.__class__ = getattr(trt, "IElementWiseLayer")
-            if layer.op == trt.ElementWiseOperation.POW:
-                layer.precision = trt.float32
-                layer.set_output_type(0, trt.float32)
-
-            l_next.precision = trt.float32
-            l_next.set_output_type(0, trt.float32)
-            continue
-        # need GPU memory 16G
-        if not force_use_fp16:
-            continue
-        for i in range(layer.num_outputs):
-            if layer.get_output_type(0) == trt.float32: 
-                layer.precision = trt.float16
-                if layer.type != trt.LayerType.CAST:
-                    layer.set_output_type(i, trt.float16)
+        # print(layer.name, l_next.name, layer.type, l_next.type)
+        layer_type_set.add(str(layer.type))
+        if layer.type == trt.LayerType.SOFTMAX:
+            layer.precision = trt.DataType.FLOAT
+            if l_next is not None:
+                l_next.precision = trt.DataType.FLOAT
+    layer_type_path = os.path.join(output_dir, "layer_type.json")
+    with open(layer_type_path, "wt") as f:
+        json.dump(list(layer_type_set), f, indent=4)
     return trt_network
 
 now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
-onnx_path = os.path.join(project_dir,"output", "onnx_output", "chatglm_6b.onnx")
+output_dir = os.path.join(project_dir,"output")
+onnx_path = os.path.join(output_dir, "onnx_output", "chatglm_6b.onnx")
 model_dir = os.path.join(project_dir, "models")
 if not os.path.exists(model_dir):
     os.mkdir(model_dir)
+time_cache_path = os.path.join(output_dir, "time_cache_fp16.cache")
 tensorrt_engine_path = os.path.join(model_dir, f"chatglm6b-bs{batch_size}.plan")
 builder = trt.Builder(MyLogger())
 builder.max_threads = os.cpu_count() // 2
@@ -164,10 +151,15 @@ config = builder.create_builder_config()
 profile_list = get_network_profiles(builder)
 for profile in profile_list:
     config.add_optimization_profile(profile)
-config.set_flag(trt.BuilderFlag.FP16)
-config.set_flag(trt.BuilderFlag.OBEY_PRECISION_CONSTRAINTS)
+# use fp16
+config.flags = 1 << int(trt.BuilderFlag.FP16)
+# disable tf32
+config.flags = config.flags & ~( 1 << int(trt.BuilderFlag.TF32) )
+# use obey precision constraints
+config.flags = config.flags & (1 << int(trt.BuilderFlag.OBEY_PRECISION_CONSTRAINTS))
 config.set_memory_pool_limit(MemoryPoolType.WORKSPACE, 2 * 1024 * 1024 * 1024)
 
+# use prewview features
 preview_features = [
     PreviewFeature.PROFILE_SHARING_0806,
     # PreviewFeature.FASTER_DYNAMIC_SHAPES_0805,
@@ -176,6 +168,20 @@ preview_features = [
 for feature in preview_features:
     config.set_preview_feature(feature, True)
 config.builder_optimization_level = builder_optimization_level
+
+# use time cache
+time_cache = b""
+# read time cache
+if use_time_cahce and os.path.exists(time_cache_path):
+    time_cache = open(time_cache_path, "rb").read()
+    if time_cache is None:
+        time_cache = b""
+        print(stylize("read time cache failed", fg("red")))
+    print(stylize("read time cache from {}".format(time_cache_path), fg("green")))
+
+    # set time cache
+    cache = config.create_timing_cache(time_cache)
+    config.set_timing_cache(cache, False)
 
 
 # load onnx model
@@ -189,6 +195,8 @@ network =  builder.create_network(
 
 _, network, _ = network_from_onnx_path(onnx_path)
 
+# this may need more memory to compile, about > 24G
+# if you don't have enough memory, you can note this line
 network = get_network_definition(network)
 print("=============tensorRT inference config =====================")
 if builder_optimization_level == 3:
@@ -203,11 +211,25 @@ else:
 #     trt_inference_config
 # )
 serialized_engine = builder.build_serialized_network(network, config)
-# 保存引擎到文件
-with open(tensorrt_engine_path, "wb") as f:
-    f.write(serialized_engine)
-# save_engine(trt_engine, tensorrt_engine_path)
-print("==tensorRT engine compile done==")
+
+if serialized_engine is not None:
+    # 保存引擎到文件
+    with open(tensorrt_engine_path, "wb") as f:
+        f.write(serialized_engine)
+    # save_engine(trt_engine, tensorrt_engine_path)
+    print("==tensorRT engine compile done==")
+else:
+    raise RuntimeError("build engine failed")
+
+# save time cache
+if use_time_cahce and not os.path.exists(time_cache_path):
+    time_cache = config.get_timing_cache()
+    time_cache_data = time_cache.serialize()
+    if time_cache is not None:
+        open(time_cache_path, "wb").write(time_cache_data)
+        print(stylize("save time cache to {}".format(time_cache_path), fg("green")))
+
+
 # rename tensorRT engine file with file size
 print("wait 10 senconds")
 time.sleep(10)
