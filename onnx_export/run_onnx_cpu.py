@@ -101,14 +101,14 @@ def run_cpu_onnx_inference(input_path: str, output_path):
                 device_type="cpu",
                 device_id=0,
                 element_type=one_present_key.dtype,
-                shape=[input_ids.shape[1], 1, 32, 128],
+                shape=one_present_key.shape,
             )
     io_binding.bind_output(
         name="logits",
         device_type="cpu",
         device_id=0,
         element_type=logits.dtype,
-        shape=[input_ids.shape[0], input_ids.shape[1], 130528],
+        shape=logits.shape,
     )
 
     # print(inputs)
