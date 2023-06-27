@@ -247,8 +247,7 @@ std::vector<torch::Tensor> Kernel::forward(
       );
     }
     */
-    int seq_length = input_tensors[0].size(1);
-    this->set_input_for_context1(seq_length);
+    this->set_input_for_context1(seq_len);
     // std::vector<std::size_t> size_list(this->n_total_);
     
     this->get_tensor_size(this->context_1_, bytes_list, type_bytes_list);

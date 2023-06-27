@@ -9,8 +9,11 @@ now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
 output_dir = os.path.join(project_dir, "output")
 # model_dir = os.path.join(project_dir, "chatglm_6b")
-onnx_path_with_cache = os.path.join(output_dir, "onnx_output", "chatglm2_6b.onnx")
-onnx_path_no_cache = os.path.join(output_dir, "onnx_output_no_cache", "chatglm2_6b.onnx")
+onnx_path = os.path.join(output_dir, "onnx_output", "chatglm_6b.onnx")
+new_onnx_dir = os.path.join(project_dir, "output", "new_onnx_output")
+if not os.path.exists(new_onnx_dir):
+    os.mkdir(new_onnx_dir)
+new_onnx_path = os.path.join(new_onnx_dir, "chatglm_6b.onnx")
 
 
 def compare_value(pre_numpy: np.array, true_numpy: np.array):
@@ -22,10 +25,11 @@ def compare_value(pre_numpy: np.array, true_numpy: np.array):
         print(stylize(f"diff: {diff} is_pass: OK", fg("green")))
     return diff
 
-
-def run_cuda_onnx_inference(onnx_path, input_path: str, output_path):
-    providers = [("CUDAExecutionProvider", {'enable_cuda_graph': False})]
+def run_cuda_onnx_inference(input_path: str, output_path):
+    providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
     sess_options = ort.SessionOptions()
+    sess_options.optimized_model_filepath = new_onnx_path
+    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
     session = ort.InferenceSession(
         onnx_path, sess_options=sess_options, providers=providers
@@ -41,7 +45,7 @@ def run_cuda_onnx_inference(onnx_path, input_path: str, output_path):
     position_ids = input_dict.position_ids.data.cpu().numpy().astype(np.int64)
     attention_mask = input_dict.attention_mask.data.cpu().numpy()
     logits = output_dict.logits.data.cpu().numpy()
-    key = "present_key_values.0.key"
+    key = "present_key_values.0.decorder.key"
     one_present_key = getattr(output_dict, key).data.cpu().numpy()
     num_layers = getattr(output_dict, "num_layers")
     io_binding = session.io_binding()
@@ -59,33 +63,32 @@ def run_cuda_onnx_inference(onnx_path, input_path: str, output_path):
     )
     for layer_idx in range(num_layers):
         input_names = [
-            f"past_key_values.{layer_idx}.key",
-            f"past_key_values.{layer_idx}.value"
+            f"past_key_values.{layer_idx}.decorder.key",
+            f"past_key_values.{layer_idx}.decorder.value"
         ]
         # inputs[input_names[0]] = past_key_values
         # inputs[input_names[1]] = past_key_values
         for name in input_names:
             try:
                 past_key_values = getattr(input_dict, name).data.cpu().numpy()
-                io_binding.bind_ortvalue_input(
-                    name=name,
-                    ortvalue=ort.OrtValue.ortvalue_from_numpy(
-                        past_key_values, "cuda", device_id=device_id
-                    )
-                )
             except Exception:
                 past_key_values = np.zeros(
                     [1, input_ids.shape[1], 32, 128],
                     dtype=one_present_key.dtype
                 )
-            # io_binding.bind_cpu_input(
-            #     name,
-            #     past_key_values
-            # )
-
+            io_binding.bind_cpu_input(
+                name,
+                past_key_values
+            )
+            io_binding.bind_ortvalue_input(
+                name=name,
+                ortvalue=ort.OrtValue.ortvalue_from_numpy(
+                    past_key_values, "cuda", device_id=device_id
+                )
+            )
         output_name = [
-            f"present_key_values.{layer_idx}.key",
-            f"present_key_values.{layer_idx}.value"
+            f"present_key_values.{layer_idx}.decorder.key",
+            f"present_key_values.{layer_idx}.decorder.value"
         ]
         for name in output_name:
             output_value = np.zeros_like(
@@ -116,8 +119,8 @@ def run_cuda_onnx_inference(onnx_path, input_path: str, output_path):
 
     # compile present_key_values
     for i in range(num_layers):
-        key_name = f"present_key_values.{i}.key"
-        value_name = f"present_key_values.{i}.value"
+        key_name = f"present_key_values.{i}.decorder.key"
+        value_name = f"present_key_values.{i}.decorder.value"
         print('=' * 20)
         print(f"compare {key_name}")
         # key_numpy = [key_name]
@@ -131,13 +134,14 @@ def run_cuda_onnx_inference(onnx_path, input_path: str, output_path):
         compare_value(value_pred, value_true)
 
 
+
 if __name__ == "__main__":
     input_path1 = os.path.join(output_dir, "pt_input1.pt")
     output_path1 = os.path.join(output_dir, "pt_output1.pt")
-    run_cuda_onnx_inference(onnx_path_with_cache, input_path1, output_path1)
+    run_cuda_onnx_inference(input_path1, output_path1)
     print("\n")
     input_path2 = os.path.join(output_dir, "pt_input2.pt")
     output_path2 = os.path.join(output_dir, "pt_output2.pt")
-    run_cuda_onnx_inference(onnx_path_no_cache, input_path2, output_path2)
+    run_cuda_onnx_inference(input_path2, output_path2)
 
 

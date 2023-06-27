@@ -6,8 +6,9 @@
 4. 安装好了docker与nvidia-docker（可选, 建议搞一个，这样可以节省配环境的时间）
 5. 下载huggingface的ChatGLM-6b的权重到本项目根目录，然后将`-`替换为`_`即可, 这一步是为了方便debug。
 ```bash
-git clone https://huggingface.co/THUDM/chatglm-6b.git
-mv chatglm-6b chatglm_6b
+git lfs install
+git clone --depth=1 https://huggingface.co/THUDM/chatglm2-6b
+mv chatglm2-6b chatglm2_6b
 ```
 6. 关于tensorRT环境。
 - 最低版本要求：8.6.0
@@ -27,24 +28,24 @@ mv chatglm-6b chatglm_6b
         sudo cp bin/* /usr/local/cuda/bin
         sudo cp -r lib/* /usr/local/cuda/lib64
         sudo cp include/* /usr/local/cuda/include
-
+        
         # 安装TensorRT中附带的python包
         cd python
         # 我的是python3.10,选择python3.10对应的python包
         pip install tensorrt-8.6.1-cp310-none-linux_x86_64.whl
         pip install tensorrt_dispatch-8.6.1-cp310-none-linux_x86_64.whl
         pip install tensorrt_lean-8.6.1-cp310-none-linux_x86_64.whl
-
+        
         # 返回上一级目录
         cd ..
-
+        
         # 进入onnx_graphsurgeon
         cd onnx_graphsurgeon
         pip install onnx_graphsurgeon-0.3.12-py2.py3-none-any.whl
-
+        
         # 返回上一级目录
         cd ../..
-
+        
         ```
         - 刷新lib库
         ```bash
@@ -54,7 +55,7 @@ mv chatglm-6b chatglm_6b
         - 确认cudnn可以被搜索到
         ```bash
         sudo ldconfig -v | grep libcudnn
-
+        
         # 搜索结果长下面这样
         # libcudnn.so.8 -> libcudnn.so.8.9.1
         # ...
@@ -63,7 +64,7 @@ mv chatglm-6b chatglm_6b
         - 确认TensorRT库的nvinfer可以被搜索到
         ```bash
         sudo ldconfig -v | grep libnvinfer
-
+        
         # 搜索结果长下面这样
         # libnvinfer.so.8 -> libnvinfer.so.8.6.1
         # libnvinfer_plugin.so.8 -> libnvinfer_plugin.so.8.6.1
@@ -74,7 +75,7 @@ mv chatglm-6b chatglm_6b
         ```bash
         # 拉镜像
         docker pull nvcr.io/nvidia/pytorch:23.04-py3
-
+        
         # 临时进入容器（退出后容器自动关闭）
         docker run --gpus all \
         	-it --rm \
@@ -85,7 +86,7 @@ mv chatglm-6b chatglm_6b
         	nvcr.io/nvidia/pytorch:23.04-py3
         ```
 
-7. 安装依赖
+7. 安装依赖(pytorch需要大于等于2.1.0，所以需要安装nightly版）
 ```bash
 pip install -r requirements.txt
 ```
@@ -97,46 +98,12 @@ pip install -r requirements.txt
  ```
 
 ### 第一步：将pytorch导出成onnx
-1. 修改chatGLM模型结构，单独改`chatglm_6b/modeling_chatglm.py` 就行了。
-- 去除没必要的tensor，将1000行的`layer_id=tensor(i)`改成`layer_id=i`即可，这个是layer_id后续调用也是用的普通数字，没必要改成tensor，改完后可以减少两个警告。
-
--  修改236行左右的代码，将cos.squeeze(1)和sin.squeeze(1)换成flatten（[参考链接](https://github.com/NVIDIA/TensorRT/issues/2849#issuecomment-1543334514))。因为sueeeze(1)会固定past_key_value的第一个shape,导致推理时，只能输入固定shape的数据。
-- 修改前长这样：
-```python
-cos, sin = F.embedding(position_id, cos.squeeze(1)).unsqueeze(2), \
-        F.embedding(position_id, sin.squeeze(1)).unsqueeze(2)
-```
-- 修改后长这样：
-```python
-cos, sin = F.embedding(
-        position_id, 
-        torch.flatten(cos, start_dim=1, end_dim=2) 
-    ).unsqueeze(2), \
-        F.embedding(
-            position_id, 
-            torch.flatten(sin, start_dim=1, end_dim=2)
-        ).unsqueeze(2)
-```
-- 当然，如果你偷懒也不是不行，我拿5月19日最新的代码改好放在onnx_export目录了，你可以直接copy过去覆盖就行了, 如果后续官方有更新代码，或许我这个就不适用了，最好还是自己改官方最新代码比较好。。
-```bash
-cp onnx_export/modeling_chatglm.py chatglm_6b/modeling_chatglm.py 
-```
-2. 进行onnx_export目录
-```bash
-cd onnx_export
-```
-
-3. 执行export2onnx.py文件
+1. 导出模型
 - for GPU显存 >= 24G, 该操作会利用GPU导出fp16的onnx文件, 导出后可以用run_onnx_cuda.py来校准一下精度看看是否。
 ```bash
 # 导出模型
-python export2onnx.py --data_type=fp16
+python onnx_export/export2onnx.py --data_type=fp16
 
-# 准备校准的数据
-python3 export_compare_data.py --data_type=fp16
-
-# 测试cuda上面推理结果
-python3 run_onnx_cuda.py
 ```
 
 - for GPU显存 < 24G, 该操作会利用CPU导出fp32格式的onnx, 导出后可以用`run_onnx_cpu.py`和`run_onnx_cpu2.py`校准精度。
@@ -144,73 +111,130 @@ python3 run_onnx_cuda.py
 # 导出模型 
 python3 export2onnx.py
 
+```
+2. 检查模型
+- 检查模型输入输出
+```bash
+polygraphy inspect model output/onnx_output/chatglm2_6b.onnx
+```
+- 上面命令运行后输出如下
+```bash
+==== ONNX Model ====
+    Name: torch_jit | ONNX Opset: 18
+    
+    ---- 58 Graph Input(s) ----
+    {input_ids [dtype=int64, shape=('batch_size', 'sequence')],
+     position_ids [dtype=int64, shape=('batch_size', 'sequence')],
+     past_key_values.0.key [dtype=float32, shape=('past_sequence', 'batch_size', 2, 128)],
+```
+- 可以看出好像attention_mask不见了，两种可能。第一种就是你的attention_mask没有给到输入参数，第二种可能是attention_mask可以不输入，为None值也不影响结果，所以Onnx自动给优化掉了。
+- 经过大量测试，我排除了第一种可能。所以我需要试试第二种可能，对比attention_mask为None时，是否影响原结果。
+- 运行下面这个代码对比一下。
+```bash
+python3 onnx_export/export_test.py 
+```
+- 实验发现，attention_mask为None时，对结果没有影响，所以可以认为导出ONNX时优化attention_mask是OK的。
+- 再尝试一下将attention_mask设置为空Tensor,对结果也没有影响
+```bash
+python3 onnx_export/export_test_v2.py
+```
+- 顺便再尝试一下第一次推理时，将past_key_values设置为0shape,看看是否有影响。
+```bash
+python3 onnx_export/export_test_v3.py
+```
+- 测试没有影响，说明onnx推理/TensorRT推理的时候，第一次forward可以将past_key_values设置为0 shape。
+- 既然attention_mask对输出结果没有影响，可以在导出onnx的时候直接将attention_mask干掉（可选）
+```bash
+python3 onnx_export/export2onnx_v2.py 
+```
+- 保险起见将forward1（无past_key_values)时的推理也导出
+```bash
+python3 onnx_export/export2onnx_v2_no_cache.py
+```
+
+3. 对比输入/输出数据
+- for fp16
+```bash
 # 准备校准的数据
-python3 export_compare_data.py
+python3 onnx_export/export_compare_data.py --data_type=fp16
+
+# 测试cuda上面推理结果
+python3 onnx_export/run_onnx_cuda.py
+```
+- for fp32
+```bash
+# 准备校准的数据
+python3 onnx_export/export_compare_data.py
 
 # 测试cpu上面的推理结果
-python3 run_onnx_cpu.py
-
-```
-- 问题：这个输入输出怎么来的？
-- 回答：其实我们加载的模型是`configuration_chatglm.py`的`ChatGLMForConditionalGeneration`类。虽然python版貌似执行的model.chat(),但是实际核心还是pytorch的model(xxx)，也就是调用的forward方法。所以可以直接在`ChatGLMForConditionalGeneration`类的forward方法那里打断点，就可以获取文件的输入参数了。foword函数大概在1174行，可以将断点打在最后的1220行，`if not return_dict`这里。然后调用原版的chat函数，进入debug模式，就可以看到函数的输入参数是啥了。注意：这个入参有两种情况，一种是past_key_values为None,一种是28x2个(past_seq_len, batch_size, 32, 128)的tensor。这里我取的是前一种进行导出onnx, 其实后面一种也可以,为了兼容tensort,我past_key_values将None数值替换成了28x2个`torch.zeros(0, 1, 32, 128)`
-- 问题：opset_version选择18？
-- 回答：因为最近onnx/tensorRT支持了layerNorm的实现，这个最低要求是17,而目前最高就是18/19,所以我选择18，当然你也可以选择17或者19试试。
-
-
-4. 返回上层目录
-```bash
-cd ..
+python3 onnx_export/run_onnx_cpu.py
 ```
 
 
 ### 第二步，onnx转tensorRT
-1. 进入tensorrt_export目录
+1. 分别检查两个onnx文件，with_cache和no_cache状态下的onnx情况，观察是否存在TensorRT不兼容算子。
 ```bash
-cd tensorrt_export
+polygraphy inspect capability output/onnx_output/chatglm2_6b.onnx
+polygraphy inspect capability output/onnx_output_no_cache/chatglm2_6b.onnx
 ```
-2. 将onnx转成TensorRT文件。
+- 提示"Graph is fully supported by TensorRT; Will not generate subgraphs."则说明没有问题。
+
+2. 将不带cache的onnx转成TensorRT文件。
+- 可以用TensorRT自带的命令行转
+- `>`这个是用来重定向输出到某个文件，如果是Windows，则可以忽略后面的。
 ```bash
-python3 onnx2trt.py
+trtexec \
+--onnx=./output/onnx_output_no_cache/chatglm2_6b.onnx \
+--saveEngine=./models/chatglm6b2-bs1_no_cache.plan \
+--timingCacheFile=./output/fp16_no_cache.cache \
+--fp16 \
+--noTF32 \
+--minShapes=input_ids:1x1,position_ids:1x1 \
+--optShapes=input_ids:1x512,position_ids:1x512 \
+--maxShapes=input_ids:1x1024,position_ids:1x1024 \
+--verbose > trt_no_past.log 2>&1 
 ```
-- 注意：由于存在两种输入情况，所以这里定义了两个profile来控制输入。
-
-3. 验证tensorRT文件输入输出结构
+- 也可以用Python脚本转
 ```bash
-python3 read_trt_profile.py
-```
-
-4. 返回上一层目录
-```bash
-cd ..
-```
-5. 编译TensorRT C++测试文件，测量pytorch与tensorRT最大精度误差（可选，推荐）。
-- 注意：编译inference_test需要安装libtorch, 去官网下载安装即可，需要下载xxx版本而不是pre_cxx版本。
-- 正式编译
-```bash
-mkdir build && cd build
-cmake ..
-make
-
-# 执行
-./inference_test
-
+python3 tensorrt_export/onnx2trt_no_cache.py > trt_no_past.log 2>&1 
 ```
 
-### 第三步，推理
-1. 运行这个即可，只是一个简单的测试(需要gcc/g++ >= 9 并且安装了cuda/TensorRt C++版)
+3. 将带cache的onnx转成TensorRT
+- 直接用python来转,此时输入参数较多，用trtexec不太方便。
+- `>`这个是用来重定向输出到某个文件，如果是Windows，则直接用前面的运行py文件命令即可。
+```bash
+python3 tensorrt_export/onnx2trt_with_cache.py > trt_with_past.log 2>&1 
+```
+
+4. 验证tensorRT文件输入输出结构
+```bash
+polygraphy inspect model models/chatglm6b2-bs1_no_cache.plan > models/no_cache.log 2>&1
+polygraphy inspect model models/chatglm6b2-bs1_with_cache.plan > models/with_cache.log 2>&1
+```
+
+5. 检查数据精度，验证两个onnx文件输出结果和pytorch是否一样。
+```bash
+python3 tensorrt_export/trt_check_no_past.py
+python3 tensorrt_export/trt_check_with_past.py 
+```
+- 经检测误差较大，需要优化一下，通过一些算子来合并Onnx
+
+### ~~~第三步，推理~~
+
+1. ~~运行这个即可，只是一个简单的测试(需要gcc/g++ >= 9 并且安装了cuda/TensorRt C++版)~~
 ```bash
 python demo.py
 ```
 
-### 速度测试
-1. 硬件平台：
-- CPU: i9-10900k
-- GPU: nvidia 3090(24G)
-- 内存：64G金士顿 DDR4 3200
+### ~~速度测试~~
+1. ~~硬件平台：~~
+- ~~CPU: i9-10900k~~
+- ~~GPU: nvidia 3090(24G)~~
+- ~~内存：64G金士顿 DDR4 3200~~
 
-2. 原版 fp16 batch_size=1 速度：27-29token/s
-3. TensorRT fp16 batch_size=1 速度：39-42token/s
-4. 综合提速：34.4%-55.5%
+2. ~~原版 fp16 batch_size=1 速度：27-29token/s~~
+3. ~~TensorRT fp16 batch_size=1 速度：39-42token/s~~
+4. ~~综合提速：34.4%-55.5%~~~~
 
 
 

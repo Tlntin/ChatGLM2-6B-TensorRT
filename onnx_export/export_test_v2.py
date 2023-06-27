@@ -12,8 +12,6 @@ from chatglm2_6b.modeling_chatglm import ChatGLMForConditionalGeneration
 from chatglm2_6b.tokenization_chatglm import ChatGLMTokenizer
 from onnx_export.utils import build_inputs
 from transformers.models.bloom import BloomOnnxConfig
-
-
 parser = argparse.ArgumentParser(description='export pytorch model to onnx')
 parser.add_argument(
     '--data_type',
@@ -34,10 +32,6 @@ if not os.path.exists(output_dir):
 onnx_output_dir = os.path.join(output_dir, "onnx_output")
 if not os.path.exists(onnx_output_dir):
     os.mkdir(onnx_output_dir)
-else:
-    for file in os.listdir(onnx_output_dir):
-        os.remove(os.path.join(onnx_output_dir, file))
-onnx_model_path = os.path.join(onnx_output_dir, "chatglm2_6b.onnx")
 
 query = "想要出国留学，应该怎么办？"
 history = [
@@ -64,21 +58,55 @@ input_tensors = build_inputs(device, tokenizer, query, history)
 # --debug for chat --
 # response, history = model.chat(tokenizer, query, history)
 # print("res", response)
-
+print("=" * 50)
 print(" ---forward first --- ")
 outputs = model.forward(
     **input_tensors
 )
 
-print("--second forward ---")
-# input_ids = input_tensors["input_ids"]
+print(" ---forward first with no attention_mask --- ")
+outputs2 = model.forward(
+    input_ids=input_tensors["input_ids"],
+    position_ids=input_tensors["position_ids"],
+    attention_mask=torch.tensor([], device=device)
+)
+
+
+def compare_diff(outputs_1, outputs_2):
+    print("--- compare diff ---")
+    max_diff = 0
+    logits_diff = (outputs_2["logits"] - outputs_1["logits"]).max().item()
+    if logits_diff > max_diff:
+        max_diff = logits_diff
+    print("logits diff is ", logits_diff)
+    past_key_values0 = outputs_1["past_key_values"]
+    past_key_values1 = outputs_2["past_key_values"]
+    for i in range(model.config.num_layers):
+        present_key_name = f"present_key_values.{i}.key"
+        present_value_name = f"present_key_values.{i}.value"
+        diff1 = (past_key_values0[i][0] - past_key_values1[i][0]).max().item()
+        diff2 = (past_key_values0[i][1] - past_key_values1[i][1]).max().item()
+        print(f"{present_key_name} diff: ", diff1)
+        print(f"{present_value_name} diff: ", diff2)
+        if diff1 > max_diff:
+            max_diff = diff1
+        if diff2 > max_diff:
+            max_diff = diff2
+
+    print("max diff is: ", max_diff)
+
+
+compare_diff(outputs, outputs2)
+print("=" * 50)
+
+
+print("=" * 50)
+print(" ---forward second --- ")
 attention_mask = input_tensors["attention_mask"]
 position_ids = input_tensors["position_ids"]
 past_key_values = outputs["past_key_values"]
 # copy from forward in second time
 input_ids = torch.tensor([[30910]]).to(device)
-
-# copy from _update_model_kwargs_for_generation in modeling_chatglm.py
 attention_mask = torch.cat(
     [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
 )
@@ -89,82 +117,22 @@ position_ids = torch.cat(
 )
 # copy from prepare_inputs_for_generation in modeling_chatglm.py
 position_ids = position_ids[..., -1:]
-# print shape
-print(
-    "input_ids shape:", input_ids.shape,
-    "; type:", input_ids.dtype
-)
-print(
-    "position_ids shape:", position_ids.shape,
-    "; type: ", input_ids.dtype
-)
-print(
-    "attention_mask shape:", attention_mask.shape,
-    "; type: ", attention_mask.dtype
-)
-print(
-    "one past_key_value shape: ", past_key_values[0][0].shape,
-    "; type:", past_key_values[0][0].dtype
-)
-print("logits shape: ", outputs["logits"].shape)
-outputs2 = model.forward(
+past_key_values1 = outputs["past_key_values"]
+outputs_3 = model.forward(
     input_ids=input_ids,
     attention_mask=attention_mask,
     position_ids=position_ids,
-    past_key_values=past_key_values
+    past_key_values=past_key_values1
 )
-print("--- export onnx ---")
-# ---prepare for onnx export ---
-input_names = ["input_ids", 'position_ids', "attention_mask"]
-output_names = ["logits"]
-dynamic_axes = {
-    'input_ids': {0: "batch_size", 1: "sequence"},
-    'position_ids': {0: "batch_size", 1: "sequence"},
-    "attention_mask": {0: "batch_size", 1: "past_sequence + sequence"},
-    "logits": {0: "batch_size", 1: "sequence"}
-}
-for layer_idx in range(model.config.num_layers):
-    # --- input key and value ---
-    past_key_name = f"past_key_values.{layer_idx}.key"
-    past_value_name = f"past_key_values.{layer_idx}.value"
-    input_names += [past_key_name, past_value_name]
-    # --- output key and value ---
-    present_key_name = f"present_key_values.{layer_idx}.key"
-    present_value_name = f"present_key_values.{layer_idx}.value"
-    output_names += [present_key_name, present_value_name]
-    dynamic_axes.update({
-        past_key_name: {
-            0: "past_sequence",
-            1: "batch_size",
-        },
-        past_value_name: {
-            0: "past_sequence",
-            1: "batch_size",
-        },
-        present_key_name: {
-            0: "past_sequence + 1",
-            1: "batch_size"
-        },
-        present_value_name: {
-            0: "past_sequence + 1",
-            1: "batch_size"
-        }
-    })
+
+print(" ---forward second with no attention_mask --- ")
+outputs_4 = model.forward(
+    input_ids=input_ids,
+    position_ids=position_ids,
+    attention_mask=torch.tensor([], device=device),
+    past_key_values=past_key_values1
+)
+compare_diff(outputs_3, outputs_4)
+print("=" * 50)
 
 
-with torch.no_grad():
-    torch.onnx.export(
-        model,
-        args=(
-            input_ids,
-            position_ids,
-            attention_mask, 
-            past_key_values
-        ),
-        f=onnx_model_path,
-        opset_version=14,
-        input_names=input_names,
-        output_names=output_names,
-        dynamic_axes=dynamic_axes,
-        training=torch.onnx.TrainingMode.EVAL,
-    )

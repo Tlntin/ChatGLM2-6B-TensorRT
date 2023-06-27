@@ -147,7 +147,7 @@ int test2(Kernel &kernel) {
 }
 
 int main() {
-  Kernel kernel("../models/chatglm6b-bs1-18.5G.plan", 1);
+  Kernel kernel("../models/model-FP32-MarkAll.plan", 1);
   test1(kernel);
   test2(kernel);
 }

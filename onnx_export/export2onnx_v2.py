@@ -60,7 +60,7 @@ device = torch.device(device)
 model.eval()
 # input_tensors
 input_tensors = build_inputs(device, tokenizer, query, history)
-
+del input_tensors["attention_mask"]
 # --debug for chat --
 # response, history = model.chat(tokenizer, query, history)
 # print("res", response)
@@ -72,16 +72,12 @@ outputs = model.forward(
 
 print("--second forward ---")
 # input_ids = input_tensors["input_ids"]
-attention_mask = input_tensors["attention_mask"]
 position_ids = input_tensors["position_ids"]
 past_key_values = outputs["past_key_values"]
 # copy from forward in second time
 input_ids = torch.tensor([[30910]]).to(device)
 
 # copy from _update_model_kwargs_for_generation in modeling_chatglm.py
-attention_mask = torch.cat(
-    [attention_mask, attention_mask.new_ones((attention_mask.shape[0], 1))], dim=-1
-)
 new_position_id = position_ids[..., -1:].clone()
 new_position_id += 1
 position_ids = torch.cat(
@@ -99,17 +95,12 @@ print(
     "; type: ", input_ids.dtype
 )
 print(
-    "attention_mask shape:", attention_mask.shape,
-    "; type: ", attention_mask.dtype
-)
-print(
     "one past_key_value shape: ", past_key_values[0][0].shape,
     "; type:", past_key_values[0][0].dtype
 )
 print("logits shape: ", outputs["logits"].shape)
 outputs2 = model.forward(
     input_ids=input_ids,
-    attention_mask=attention_mask,
     position_ids=position_ids,
     past_key_values=past_key_values
 )
@@ -120,7 +111,6 @@ output_names = ["logits"]
 dynamic_axes = {
     'input_ids': {0: "batch_size", 1: "sequence"},
     'position_ids': {0: "batch_size", 1: "sequence"},
-    "attention_mask": {0: "batch_size", 1: "past_sequence + sequence"},
     "logits": {0: "batch_size", 1: "sequence"}
 }
 for layer_idx in range(model.config.num_layers):
@@ -158,7 +148,7 @@ with torch.no_grad():
         args=(
             input_ids,
             position_ids,
-            attention_mask, 
+            torch.tensor([], device=device),
             past_key_values
         ),
         f=onnx_model_path,

@@ -1,4 +1,5 @@
 chatglm_6b/
+chatglm2_6b/
 output/
 onnx_output/
 new_onnx_output/
@@ -20,3 +21,4 @@ kernel/ckernel.egg-info
 kernel/dist
 log.txt
 tensorrt_export/get_dataset.py
+*.log
