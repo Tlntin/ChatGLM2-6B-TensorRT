@@ -75,7 +75,8 @@ print("--second forward ---")
 position_ids = input_tensors["position_ids"]
 past_key_values = outputs["past_key_values"]
 # copy from forward in second time
-input_ids = torch.tensor([[30910]]).to(device)
+new_input_ids = torch.tensor([[30910]]).to(device)
+input_ids = torch.cat([input_tensors["input_ids"], new_input_ids], dim=-1)
 
 # copy from _update_model_kwargs_for_generation in modeling_chatglm.py
 new_position_id = position_ids[..., -1:].clone()
@@ -84,7 +85,8 @@ position_ids = torch.cat(
     [position_ids, new_position_id], dim=-1
 )
 # copy from prepare_inputs_for_generation in modeling_chatglm.py
-position_ids = position_ids[..., -1:]
+# position_ids = position_ids[..., -1:]
+# input_ids = input_ids[..., -1:]
 # print shape
 print(
     "input_ids shape:", input_ids.shape,
@@ -95,10 +97,10 @@ print(
     "; type: ", input_ids.dtype
 )
 print(
-    "one past_key_value shape: ", past_key_values[0][0].shape,
+    "first forward one past_key_value shape: ", past_key_values[0][0].shape,
     "; type:", past_key_values[0][0].dtype
 )
-print("logits shape: ", outputs["logits"].shape)
+print("first forward logits shape: ", outputs["logits"].shape)
 outputs2 = model.forward(
     input_ids=input_ids,
     position_ids=position_ids,
@@ -106,7 +108,7 @@ outputs2 = model.forward(
 )
 print("--- export onnx ---")
 # ---prepare for onnx export ---
-input_names = ["input_ids", 'position_ids', "attention_mask"]
+input_names = ["input_ids", 'position_ids']
 output_names = ["logits"]
 dynamic_axes = {
     'input_ids': {0: "batch_size", 1: "sequence"},
@@ -132,11 +134,11 @@ for layer_idx in range(model.config.num_layers):
             1: "batch_size",
         },
         present_key_name: {
-            0: "past_sequence + 1",
+            0: "past_sequence + sequence",
             1: "batch_size"
         },
         present_value_name: {
-            0: "past_sequence + 1",
+            0: "past_sequence + sequence",
             1: "batch_size"
         }
     })
@@ -148,7 +150,6 @@ with torch.no_grad():
         args=(
             input_ids,
             position_ids,
-            torch.tensor([], device=device),
             past_key_values
         ),
         f=onnx_model_path,

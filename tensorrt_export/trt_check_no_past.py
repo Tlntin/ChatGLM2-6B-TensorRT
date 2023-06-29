@@ -33,7 +33,7 @@ def main():
     device = torch.device("cuda:0")
     input_dict = torch.jit.load(input_path)
     batch_size = 1
-    num_layers = 28
+    num_layers = 1
     output_dict = torch.jit.load(output_path)
     input_ids: torch.Tensor = input_dict.input_ids.int().to(device)
     position_ids: torch.Tensor = input_dict.position_ids.int().to(device)

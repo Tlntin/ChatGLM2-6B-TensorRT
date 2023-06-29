@@ -122,7 +122,7 @@ if __name__ == "__main__":
     for profile in profile_list:
         config.add_optimization_profile(profile)
     # use fp16
-    config.flags = 1 << int(trt.BuilderFlag.FP16)
+    # config.flags = 1 << int(trt.BuilderFlag.FP16)
     # disable tf32
     config.flags = config.flags & ~(1 << int(trt.BuilderFlag.TF32))
     # use obey precision constraints

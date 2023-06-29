@@ -32,7 +32,7 @@ def run_cpu_onnx_inference(onnx_path, input_path: str, output_path):
     sess_options = ort.SessionOptions()
     # sess_options.optimized_model_filepath = new_onnx_path
     # sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
+    print(f"loading onnx {onnx_path}, please wait...")
     session = ort.InferenceSession(
         onnx_path, sess_options=sess_options, providers=providers
     )
@@ -78,11 +78,13 @@ def run_cpu_onnx_inference(onnx_path, input_path: str, output_path):
                     name,
                     past_key_values
                 )
+
             except Exception:
                 past_key_values = np.zeros(
                     [0, input_ids.shape[1], 2, 128],
                     dtype=one_present_key.dtype
                 )
+
 
         output_name = [
             f"present_key_values.{layer_idx}.key",

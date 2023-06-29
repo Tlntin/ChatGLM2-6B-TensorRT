@@ -59,6 +59,7 @@ tokenizer = ChatGLMTokenizer.from_pretrained(model_dir)
 input_tensors = build_inputs(device, tokenizer, query, history)
 # model = ChatGLMForConditionalGeneration.from_pretrained(model_dir)
 config = ChatGLMConfig.from_pretrained(model_dir)
+# config.num_layers = 1
 model = ChatGLMForConditionalGeneration.from_pretrained(model_dir, config=config)
 if device == "cuda":
     model = model.half().cuda()

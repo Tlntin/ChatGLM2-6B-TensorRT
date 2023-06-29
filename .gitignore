@@ -22,3 +22,4 @@ kernel/dist
 log.txt
 tensorrt_export/get_dataset.py
 *.log
+*.json

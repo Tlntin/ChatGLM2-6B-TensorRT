@@ -8,11 +8,11 @@ import shutil
 import numpy as np
 from polygraphy.logger import G_LOGGER
 G_LOGGER.module_severity = {'': G_LOGGER.VERBOSE}
-
+from colored import stylize, fg
 from polygraphy import constants
 import onnx
 from polygraphy.backend.common import SaveBytes
-from polygraphy.backend.onnx import modify_outputs, onnx_from_path
+from polygraphy.backend.onnx import modify_outputs, onnx_from_path, ModifyOutputs
 from polygraphy.backend.onnxrt import OnnxrtRunner, SessionFromOnnx
 from polygraphy.backend.trt import CreateConfig as CreateTrtConfig, EngineBytesFromNetwork, EngineFromBytes, ModifyNetworkOutputs, NetworkFromOnnxPath, Profile, TrtRunner
 from polygraphy.common import TensorMetadata
@@ -33,45 +33,54 @@ from tensorrt_export.onnx2trt_no_cache import (
 )
 
 
-output_dir = os.path.join(project_dir,"output")
-new_onnx_dir = os.path.join(output_dir, "onnx_output_new")
+output_dir = os.path.join(project_dir, "output")
+new_onnx_dir = os.path.join(output_dir, "onnx_output_no_cache_new")
 if not os.path.exists(new_onnx_dir):
     os.mkdir(new_onnx_dir)
 else:
     for file in os.listdir(new_onnx_dir):
         os.remove(os.path.join(new_onnx_dir, file))
-new_onnx_dir2 = os.path.join(output_dir, "onnx_output_new2")
+new_onnx_dir2 = os.path.join(output_dir, "onnx_output_no_cache_new2")
 if not os.path.exists(new_onnx_dir2):
     os.mkdir(new_onnx_dir2)
 else:
     for file in os.listdir(new_onnx_dir2):
         os.remove(os.path.join(new_onnx_dir2, file))
 
-onnx_path = os.path.join(output_dir, "onnx_output", "chatglm_6b.onnx")
-new_onnx_path = os.path.join(new_onnx_dir, "chatglm_6b.onnx")
-new_onnx_path2 = os.path.join(new_onnx_dir2, "chatglm_6b.onnx")
+onnx_path = os.path.join(output_dir, "onnx_output_no_cache", "chatglm2_6b.onnx")
+new_onnx_path = os.path.join(new_onnx_dir, "chatglm2_6b.onnx")
+new_onnx_path2 = os.path.join(new_onnx_dir2, "chatglm2_6b.onnx")
 model_dir = os.path.join(project_dir, "models")
-trt_model_path = os.path.join(model_dir, "model-FP32-MarkAll.plan")
+trt_model_path = os.path.join(model_dir, "model-no-cache-FP32-MarkAll.plan")
+time_cache_path = os.path.join(output_dir, "fp32_markAll_no_cache.cache")
+use_time_cache = True
 num_layers = 1
 
 
 # Data Loader
+dtype = np.dtype(np.int32)
 data_loader = DataLoader(
     input_metadata=TensorMetadata()
-    .add('input_ids', dtype=np.int32, shape=(1, 512), min_shape=None, max_shape=None)
-    .add('position_ids', dtype=np.int32, shape=(1, 2, 512), min_shape=None, max_shape=None)
-    .add('attention_mask', dtype=np.int32, shape=(1,1, 512, 512), min_shape=None, max_shape=None)
-    .add("past_key_values.0.decorder.key", dtype=np.float32, shape=(1, 1, 32, 128), min_shape=None, max_shape=None)
-    .add("past_key_values.0.decorder.value", dtype=np.float32, shape=(1, 1, 32, 128), min_shape=None, max_shape=None)
+    .add('input_ids', dtype=dtype, shape=(1, 512))
+    .add('position_ids', dtype=np.int32, shape=(1, 512))
 )
 # load onnx
+
 print("loading onnx model from", onnx_path)
 onnx_model = onnx_from_path(onnx_path)
+# this layer will output None in onnxrt
+bool_tensor_list = ["/transformer/encoder/layers.0/mlp/Sigmoid_output_0"]
+for node in onnx_model.graph.node:
+    # print(node.name, node.op_type)
+    # this layer is a bool tensor, it will cause error when run TensorRT engine
+    if node.op_type == "Equal":
+        print("find bool", node.name)
+        bool_tensor_list.extend(node.output)
 input_list = onnx_model.graph.input
 input_names = [i.name for i in input_list]
 output_list = onnx_model.graph.output
 output_names = [o.name for o in output_list]
-exclude_outputs = input_names
+exclude_outputs = input_names + bool_tensor_list
 # mark all layers as output for onnx model
 # warning this will make the onnx model output all layers with no type and no shape
 new_onnx_model = modify_outputs(
@@ -90,15 +99,18 @@ onnx.save_model(
     save_as_external_data=True,
     all_tensors_to_one_file=False
 )
-# load onnxrt
-build_onnxrt_session = SessionFromOnnx(new_onnx_path)
-# get onnxrt output tensor info(name, type, shape)
-sess = build_onnxrt_session()
+# load onnx_runtime
+build_onnx_rt_session = SessionFromOnnx(new_onnx_path)
+# get onnx runtime output tensor info(name, type, shape)
+sess = build_onnx_rt_session()
+bool_tensor_list = []
 sess_output = sess.get_outputs()
 for node in sess_output:
     if node.type == "tensor(float)":
         dtype = onnx.TensorProto.FLOAT
     elif node.type == "tensor(bool)":
+        print("find bool", node.name)
+        bool_tensor_list.append(node.name)
         dtype = onnx.TensorProto.BOOL
     elif node.type == "tensor(int64)":
         dtype = onnx.TensorProto.INT64
@@ -128,22 +140,58 @@ print("===========building trt engine=========================")
 builder = trt.Builder(MyLogger())
 builder.max_threads = os.cpu_count() // 2
 config = builder.create_builder_config()
-config.flags = config.flags & ~( 1 << int(trt.BuilderFlag.TF32) )
+config.flags = config.flags & ~(1 << int(trt.BuilderFlag.TF32))
+# read time cache
+if use_time_cache:
+    if os.path.exists(time_cache_path):
+        time_cache = open(time_cache_path, "rb").read()
+        if time_cache is None:
+            time_cache = b""
+            print(stylize("read time cache failed", fg("red")))
+        else:
+            print(stylize(f"read time cache from {time_cache_path}", fg("green")))
+    else:
+        time_cache = b""
+        print(stylize("time cache will init with empty.", fg("green")))
+
+    # set time cache
+    cache = config.create_timing_cache(time_cache)
+    config.set_timing_cache(cache, False)
 profile_list = get_network_profiles(builder, num_layers=num_layers)
 for profile in profile_list:
     config.add_optimization_profile(profile)
-# _, network, _ = network_from_onnx_path(onnx_path)
 
-_, network,_ = NetworkFromOnnxPath(new_onnx_path2)()
+_b, network, _p = NetworkFromOnnxPath(new_onnx_path2)()
+
+# network = network_from_onnx_path(onnx_path)
 # set_network_outputs = ModifyNetworkOutputs(
 #     network=network,
 #     outputs=constants.MARK_ALL,
+#     exclude_outputs=bool_tensor_list
 # )
-# _, network,_ = set_network_outputs()
+# wo_b, network, _p = set_network_outputs()
 network_input_number = network.num_inputs
 network_output_number = network.num_outputs
 print("TensorRT input num:", network_input_number, "TensorRT output num:", network_output_number)
 serialized_engine = builder.build_serialized_network(network, config)
+if serialized_engine is not None:
+    with open(trt_model_path, "wb") as f:
+        f.write(serialized_engine)
+    # save_engine(trt_engine, tensorrt_engine_path)
+    print("==tensorRT engine compile done==")
+
+# save time cache
+if use_time_cache and not os.path.exists(time_cache_path):
+    time_cache = config.get_timing_cache()
+    if time_cache is not None:
+        time_cache_data = time_cache.serialize()
+        open(time_cache_path, "wb").write(time_cache_data)
+        print(
+            stylize(
+                "save time cache to {}".format(time_cache_path),
+                fg("green")
+            )
+        )
 
 # profiles = [
 #     Profile().add('input_ids:[1,512] position_ids:[1,2,512] attention_mask:[1,1,512,512] past_key_values.0.decorder.key:[0,1,32,128] past_key_values.0.decorder.value', min=[0, 1, 32, 128], opt=[0, 1, 32, 128], max=[0, 1, 32, 128])
@@ -157,7 +205,7 @@ print("===========trt engine build OK=========================")
 
 # Runners
 runners = [
-    OnnxrtRunner(build_onnxrt_session),
+    OnnxrtRunner(build_onnx_rt_session),
     TrtRunner(deserialize_engine),
 ]
 

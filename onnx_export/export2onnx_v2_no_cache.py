@@ -43,7 +43,7 @@ query = "想要出国留学，应该怎么办？"
 history = [
     (
         "你好",
-        "你好👋!我是人工智能助手 ChatGLM-6B,很高兴见到你,欢迎问我任何问题。",
+        "你好👋!我是人工智能助手 ChatGLM2-6B,很高兴见到你,欢迎问我任何问题。",
     )
 ]
 
@@ -77,7 +77,6 @@ output_names = ["logits"]
 dynamic_axes = {
     'input_ids': {0: "batch_size", 1: "sequence"},
     'position_ids': {0: "batch_size", 1: "sequence"},
-    'attention_mask': {0: "batch_size", 1: " + sequence"},
     "logits": {0: "batch_size", 1: "sequence"}
 }
 for layer_idx in range(model.config.num_layers):
@@ -104,7 +103,6 @@ with torch.no_grad():
         args=(
             input_tensors["input_ids"],
             input_tensors["position_ids"],
-            input_tensors["attention_mask"]
         ),
         f=onnx_model_path,
         opset_version=14,

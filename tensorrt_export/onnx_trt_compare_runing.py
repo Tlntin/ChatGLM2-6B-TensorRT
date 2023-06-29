@@ -23,12 +23,11 @@ project_dir = os.path.dirname(now_dir)
 
 
 
-output_dir = os.path.join(project_dir,"output")
-onnx_path = os.path.join(output_dir, "onnx_output", "chatglm_6b.onnx")
-new_onnx_dir = os.path.join(output_dir, "onnx_output_new")
-new_onnx_path = os.path.join(new_onnx_dir, "chatglm_6b.onnx")
+output_dir = os.path.join(project_dir, "output")
+new_onnx_dir = os.path.join(output_dir, "onnx_output_no_cache_new")
+new_onnx_path = os.path.join(new_onnx_dir, "chatglm2_6b.onnx")
 model_dir = os.path.join(project_dir, "models")
-trt_model_path = os.path.join(model_dir, "model-FP16-MarkAll.plan")
+trt_model_path = os.path.join(model_dir, "model-no-cache-FP32-MarkAll.plan")
 num_layers = 1
 
 
@@ -37,15 +36,12 @@ num_layers = 1
 data_loader = DataLoader(
     input_metadata=TensorMetadata()
     .add('input_ids', dtype=np.int32, shape=(1, 512), min_shape=None, max_shape=None)
-    .add('position_ids', dtype=np.int32, shape=(1, 2, 512), min_shape=None, max_shape=None)
-    .add('attention_mask', dtype=np.int32, shape=(1,1, 512, 512), min_shape=None, max_shape=None)
-    .add("past_key_values.0.decorder.key", dtype=np.float32, shape=(1, 1, 32, 128), min_shape=None, max_shape=None)
-    .add("past_key_values.0.decorder.value", dtype=np.float32, shape=(1, 1, 32, 128), min_shape=None, max_shape=None)
+    .add('position_ids', dtype=np.int32, shape=(1, 512), min_shape=None, max_shape=None)
 )
 
 print("load onnx")
 # build_onnxrt_session = SessionFromOnnx(new_onnx_path, providers=["CUDAExecutionProvider"])
-build_onnxrt_session = SessionFromOnnx(new_onnx_path)
+build_onnxrt_session = SessionFromOnnx(new_onnx_path, providers=["CPUExecutionProvider"])
 print("load TensorRT engine")
 engine_bytes = BytesFromPath(trt_model_path)
 deserialize_engine = EngineFromBytes(engine_bytes)
@@ -53,7 +49,7 @@ deserialize_engine = EngineFromBytes(engine_bytes)
 # Runners
 runners = [
     OnnxrtRunner(build_onnxrt_session),
-    TrtRunner(deserialize_engine),
+    # TrtRunner(deserialize_engine),
 ]
 
 # Runner Execution
