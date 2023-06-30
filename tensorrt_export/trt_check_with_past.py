@@ -8,8 +8,10 @@ now_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(now_dir)
 sys.path.append(project_dir)
 
+
 # from kernel.pykernel_no_past import KernelNoPast
 from kernel.pykernel_with_past import KernelWithPast
+
 
 
 def check_value(pre_value: torch.Tensor, true_value: torch.Tensor, diff=1e-3):
@@ -67,13 +69,13 @@ def main():
         pre_present_key = output_tensors[i * 2]
         pre_present_value = output_tensors[i * 2 + 1]
         print("=" * 20)
-        print(f"compare ", present_key_name)
+        print("compare: ", present_key_name)
         temp_diff = check_value(pre_present_key, true_present_key)
         if temp_diff > max_diff_:
             max_diff_ = temp_diff
 
         print("=" * 20)
-        print(f"compare ", present_value_name)
+        print("compare: ", present_value_name)
         temp_diff = check_value(pre_present_value, true_present_value)
         if temp_diff > max_diff_:
             max_diff_ = temp_diff

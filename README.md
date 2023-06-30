@@ -228,9 +228,10 @@ python3 tensorrt_export/onnx2trt_with_cache.py > trt_with_past.log 2>&1
 polygraphy inspect model models/chatglm6b2-bs1_with_cache.plan > models/with_cache.log 2>&1
 ```
 
-5. 检查数据精度，验证TensorRT文件输出结果和pytorch是否一样。
+5. 检查数据精度，验证TensorRT文件输出结果和pytorch是否一样（目前测试来看误差有点大，暂时没办法用）。
 ```bash
 python3 tensorrt_export/trt_check_with_past.py 
+python3 tensorrt_export/trt_check_no_past.py 
 ```
 - 经检测误差较大，需要优化一下，通过一些算子来合并Onnx
 

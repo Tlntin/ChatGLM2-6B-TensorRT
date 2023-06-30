@@ -35,13 +35,12 @@ def gpu_check(error: cudart.cudaError_t):
         raise Exception(f"ERROR [{error_name}]: {error_info}")
 
 
-class KernelWithPast:
+class KernelNoPast:
     def __init__(self, engine_path: str, batch_size: int = 1, num_layers: int = 28):
         assert os.path.exists(engine_path), print(f"{engine_path} not exists.")
         self.batch_size_ = batch_size
         self.n_input_ = 2 + num_layers * 2
         self.n_output_ = num_layers * 2 + 1
-        self.num_layers = num_layers
         self.n_total_ = self.n_input_ + self.n_output_
         self.tensor_names_ = []
         # self.logger_ = trt.Logger(trt.Logger.INFO)
@@ -97,13 +96,14 @@ class KernelWithPast:
         print(stylize(f"number of profile: {n_profile}", fg("green")))
 
     def set_input_shape(self, seq_len: int):
-        self.context_.set_input_shape("input_ids", (self.batch_size_, 1))
-        self.context_.set_input_shape("position_ids", (self.batch_size_, 1))
+        self.context_.set_input_shape("input_ids", (self.batch_size_, seq_len))
+        self.context_.set_input_shape("position_ids", (self.batch_size_, seq_len))
         for i in range(2, self.n_input_):
             self.context_.set_input_shape(
                 self.tensor_names_[i],
-                (seq_len, self.batch_size_, 2, 128)
+                (0, self.batch_size_, 2, 128)
             )
+
 
     def get_tensor_size(self):
         shape_list = []
@@ -116,35 +116,45 @@ class KernelWithPast:
             data_type_list.append(data_type)
         return shape_list, data_type_list
 
-    def forward(self, input_tensors: Tuple[torch.Tensor, ...]):
-        assert len(input_tensors) == self.n_input_, \
-            print(f"this number of input tensor must be {self.n_input_}")
+    @staticmethod 
+    def get_data_type(raw_data_type: trt.DataType):
+        if raw_data_type == trt.DataType.FLOAT:
+            torch_type = torch.float32
+        elif raw_data_type == trt.DataType.HALF:
+            torch_type = torch.float16
+        elif raw_data_type == trt.DataType.INT32:
+            torch_type = torch.int32
+        elif raw_data_type == trt.DataType.INT8:
+            torch_type = torch.int8
+        else:
+            raise Exception(f"not support type {raw_data_type}")
+        return torch_type
+
+    def forward(self, input_tensors: Tuple[torch.Tensor, torch.Tensor]):
+        seq_len = input_tensors[0].size(1)
         device = input_tensors[0].device
-        past_seq_len = input_tensors[2].shape[0]
-        self.set_input_shape(past_seq_len)
+        self.set_input_shape(seq_len)
         shape_list, data_type_list = self.get_tensor_size()
         # --- prepare for output --- #
         output_tensors = []
         for i in range(self.n_input_, self.n_total_):
-            if data_type_list[i] == trt.DataType.FLOAT:
-                torch_type = torch.float32
-            elif data_type_list[i] == trt.DataType.HALF:
-                torch_type = torch.float16
-            elif data_type_list[i] == trt.DataType.INT32:
-                torch_type = torch.int32
-            elif data_type_list[i] == trt.DataType.INT8:
-                torch_type = torch.int8
-            else:
-                raise Exception(f"not support type {data_type_list[i]}")
+            torch_type = self.get_data_type(data_type_list[i]) 
             tensor = torch.zeros(
                 size=tuple(shape_list[i]), dtype=torch_type, device=device
             )
             output_tensors.append(tensor)
         # === run inference with V3 ===
-        for i in range(self.n_input_):
+        for i in range(2):
             self.context_.set_tensor_address(
                 self.tensor_names_[i],
                 input_tensors[i].data_ptr()
+            )
+        torch_type = self.get_data_type(data_type_list[2])
+        sample_tensor = torch.zeros([1], dtype=torch_type, device=device)
+        for i in range(2, self.n_input_):
+            self.context_.set_tensor_address(
+                self.tensor_names_[i],
+                sample_tensor.data_ptr()
             )
         for i in range(self.n_input_, self.n_total_):
             self.context_.set_tensor_address(
@@ -163,18 +173,12 @@ if __name__ == "__main__":
     now_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(now_dir)
     model_dir = os.path.join(project_dir, "models")
-    num_layers = 28
     engine_path1 = os.path.join(model_dir, "chatglm6b2-bs1_with_cache.plan")
-    kernel = KernelWithPast(engine_path1)
-    input_ids = torch.ones([1, 1], dtype=torch.int64).cuda()
-    position_ids = torch.ones([1, 1], dtype=torch.int64).cuda()
-    input_tensors1 = [input_ids, position_ids]
-    device1 = torch.device("cuda:0")
-    for _ in range(num_layers):
-        for _ in range(2):
-            on_key_value = torch.rand([65, 1, 2, 128]).to(device1)
-            input_tensors1.append(on_key_value)
-    output_tensors1 = kernel.forward(tuple(input_tensors1))
+    kernel = KernelNoPast(engine_path1)
+    input_ids = torch.ones([1, 4], dtype=torch.int64).cuda()
+    position_ids = torch.ones([1, 4], dtype=torch.int64).cuda()
+    input_tensors1 = (input_ids, position_ids)
+    output_tensors1 = kernel.forward(input_tensors1)
     print("first shape", output_tensors1[0].shape)
     print("last shape", output_tensors1[-1].shape)
 

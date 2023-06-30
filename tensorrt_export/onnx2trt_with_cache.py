@@ -16,8 +16,8 @@ time_cache_path = os.path.join(output_dir, "fp16_with_cache.cache")
 # default is 1, maybe you can try 2, 4, 8, 16
 batch_size = 1
 use_time_cache = True
-max_length = 2048
-opt_length = max_length // 2
+max_input_length = 2048
+opt_input_length = max_input_length // 2
 # if use force use fp16, may reduce the accuracy and memory usage
 force_use_fp16 = False
 # default 3, max 5, 5 is the best but need more GPU memory and time
@@ -55,14 +55,14 @@ def get_network_profiles(trt_builder, num_layers=28):
     profile2.set_shape(
         "input_ids",
         (1, 1),
-        (batch_size, 1),
-        (batch_size, 1),
+        (batch_size, opt_input_length),
+        (batch_size, max_input_length),
     )
     profile2.set_shape(
         "position_ids",
         (1, 1),
-        (batch_size, 1),
-        (batch_size, 1),
+        (batch_size, opt_input_length),
+        (batch_size, max_input_length),
     )
     for layer_idx in range(num_layers):
         input_names = [
@@ -72,9 +72,9 @@ def get_network_profiles(trt_builder, num_layers=28):
         for name in input_names:
             profile2.set_shape(
                 name,
-                (1, 1, 2, 128),
-                (opt_length - 1, batch_size, 2, 128),
-                (max_length - 1, batch_size, 2, 128),
+                (0, 1, 2, 128),
+                (opt_input_length - 1, batch_size, 2, 128),
+                (max_input_length - 1, batch_size, 2, 128),
             )
     profiles = [profile2]
     return profiles
