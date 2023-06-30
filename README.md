@@ -1,17 +1,22 @@
 ## 使用教程
-### 准备工作
-1. pytorch->onnx, 这个阶段需要40-64G左右内存, 24G以上显存（可选，推荐有）, 推荐32G显存。
-2. onnx->tensorRT, 这个阶段需要大量显存(目测大概17G左右)以及大量内存（大概70G)，所以显卡要求最低24G显存,推荐32G显存， 内存不够的可以加swap。
-3. TensorRT推理阶段，基本和原版一样，13G左右。
-4. 安装好了docker与nvidia-docker（可选, 建议搞一个，这样可以节省配环境的时间）
-5. 下载huggingface的ChatGLM-6b的权重到本项目根目录，然后将`-`替换为`_`即可, 这一步是为了方便debug。
+### 准备工作: pytorch->ONNX
+1. pytorch->onnx, 这个阶段需要40-64G左右内存（如果需要导出fp16格式的onnx，需要24G以上显存，推荐32G显存）。
+2. 安装依赖，注意：pytorch转ONNX需要，pytorch需要大于等于2.1.0，所以需要安装nightly版**
+```bash
+pip install -r requirements.txt
+```
+### 准备工作2： ONNX->TensorRT
+1. onnx->tensorRT, 这个阶段需要大量显存(目测大概16G左右)以及大量内存（大概70G)，所以显卡要求最低16G显存,推荐24G显存， 内存不够的可以加swap。
+2. TensorRT推理阶段，基本和原版一样，12.5G左右。
+3. 安装好了docker与nvidia-docker（可选, 建议搞一个，这样可以节省配环境的时间）
+4. 下载huggingface的ChatGLM-6b的权重到本项目根目录，然后将`-`替换为`_`即可, 这一步是为了方便debug。
 ```bash
 git lfs install
 git clone --depth=1 https://huggingface.co/THUDM/chatglm2-6b
 mv chatglm2-6b chatglm2_6b
 ```
-6. 关于tensorRT环境。
-- 最低版本要求：8.6.0
+5. 关于tensorRT环境。
+- 最低版本要求：8.6.0, 推荐8.6.1
     1. 选择1：pypi安装
     2. 选择2（推荐）：本机安装，开发环境使用，目前推荐最新的TensorRT8.6.1+cuda11.8+cudnn8.9.x+pytorch2.0, cuda用.run格式包安装，cudnn和TensorRT用tar压缩包安装。
         - 安装cudnn示例
@@ -86,11 +91,8 @@ mv chatglm2-6b chatglm2_6b
         	nvcr.io/nvidia/pytorch:23.04-py3
         ```
 
-7. 安装依赖(pytorch需要大于等于2.1.0，所以需要安装nightly版）
-```bash
-pip install -r requirements.txt
-```
- 8. 推荐使用cuda 11.8以及以上，结合lazy load技术，可以加快推理以及节省显存。[链接](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#lazy-loading)
+
+6. 推荐使用cuda 11.8以及以上，结合lazy load技术，可以加快推理以及节省显存。[链接](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#lazy-loading)
  - 使用方法
  ```bash
  # 建议写到~/.bashrc
@@ -98,15 +100,17 @@ pip install -r requirements.txt
  ```
 
 ### 第一步：将pytorch导出成onnx
-1. 导出模型
-- for GPU显存 >= 24G, 该操作会利用GPU导出fp16的onnx文件, 导出后可以用run_onnx_cuda.py来校准一下精度看看是否。
+1. 导出ONNX模型
+- for GPU显存 > 24G
+- 该操作会利用GPU导出fp16的onnx文件, 导出后可以用run_onnx_cuda.py来校准一下精度看看是否。
 ```bash
 # 导出模型
 python onnx_export/export2onnx.py --data_type=fp16
 
 ```
 
-- for GPU显存 < 24G, 该操作会利用CPU导出fp32格式的onnx, 导出后可以用`run_onnx_cpu.py`和`run_onnx_cpu2.py`校准精度。
+- for GPU显存 < 24G，或者无GPU用户（推荐）
+- 该操作会利用CPU导出fp32格式的onnx, 导出后可以用`run_onnx_cpu.py`和`run_onnx_cpu2.py`校准精度。
 ```bash
 # 导出模型 
 python3 export2onnx.py
@@ -143,17 +147,51 @@ python3 onnx_export/export_test_v2.py
 python3 onnx_export/export_test_v3.py
 ```
 - 测试没有影响，说明onnx推理/TensorRT推理的时候，第一次forward可以将past_key_values设置为0 shape。
-- 既然attention_mask对输出结果没有影响，可以在导出onnx的时候直接将attention_mask干掉（可选）
+- 既然attention_mask对输出结果没有影响，可以在导出onnx的时候直接将attention_mask干掉
+- 这里需要做一些修改，将`chatglm2_6b/modeling_chatglm.py`文件中的`ChatGLMForConditionalGeneration`类中的forward方法中的`attention_mask: Optional[torch.Tensor] = None`这个参数剔除（大概在914行），
+- 修改前
+```python
+def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[Tuple[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        return_last_logit: Optional[bool] = False,
+):
+      ....
+```
+- 修改后
+```python
+def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        past_key_values: Optional[Tuple[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        return_last_logit: Optional[bool] = False,
+):
+    attention_mask: Optional[torch.Tensor] = None
+```
+- 修改完的`modeling_chatglm.py`我已经放到`onnx_export`目录，仅供参考
+- 然后再执行一次导出onnx, 这次完全将`attention_mask`剔除
 ```bash
 python3 onnx_export/export2onnx_v2.py 
 ```
-- 保险起见将forward1（无past_key_values)时的推理也导出
-```bash
-python3 onnx_export/export2onnx_v2_no_cache.py
-```
 
 3. 对比输入/输出数据
-- for fp16
+- for fp16（还没测试，没有大显存）
 ```bash
 # 准备校准的数据
 python3 onnx_export/export_compare_data.py --data_type=fp16
@@ -171,35 +209,14 @@ python3 onnx_export/run_onnx_cpu.py
 ```
 
 
-### 第二步，onnx转tensorRT
-1. 分别检查两个onnx文件，with_cache和no_cache状态下的onnx情况，观察是否存在TensorRT不兼容算子。
+### 第二步，onnx转tensorRT（还未彻底完工，待续）
+1. 检查onnx文件，观察是否存在TensorRT不兼容算子。
 ```bash
 polygraphy inspect capability output/onnx_output/chatglm2_6b.onnx
-polygraphy inspect capability output/onnx_output_no_cache/chatglm2_6b.onnx
 ```
 - 提示"Graph is fully supported by TensorRT; Will not generate subgraphs."则说明没有问题。
 
-2. 将不带cache的onnx转成TensorRT文件。
-- 可以用TensorRT自带的命令行转
-- `>`这个是用来重定向输出到某个文件，如果是Windows，则可以忽略后面的。
-```bash
-trtexec \
---onnx=./output/onnx_output_no_cache/chatglm2_6b.onnx \
---saveEngine=./models/chatglm6b2-bs1_no_cache.plan \
---timingCacheFile=./output/fp16_no_cache.cache \
---fp16 \
---noTF32 \
---minShapes=input_ids:1x1,position_ids:1x1 \
---optShapes=input_ids:1x512,position_ids:1x512 \
---maxShapes=input_ids:1x1024,position_ids:1x1024 \
---verbose > trt_no_past.log 2>&1 
-```
-- 也可以用Python脚本转
-```bash
-python3 tensorrt_export/onnx2trt_no_cache.py > trt_no_past.log 2>&1 
-```
-
-3. 将带cache的onnx转成TensorRT
+2. 将带cache的onnx转成TensorRT
 - 直接用python来转,此时输入参数较多，用trtexec不太方便。
 - `>`这个是用来重定向输出到某个文件，如果是Windows，则直接用前面的运行py文件命令即可。
 ```bash
@@ -208,13 +225,11 @@ python3 tensorrt_export/onnx2trt_with_cache.py > trt_with_past.log 2>&1
 
 4. 验证tensorRT文件输入输出结构
 ```bash
-polygraphy inspect model models/chatglm6b2-bs1_no_cache.plan > models/no_cache.log 2>&1
 polygraphy inspect model models/chatglm6b2-bs1_with_cache.plan > models/with_cache.log 2>&1
 ```
 
-5. 检查数据精度，验证两个onnx文件输出结果和pytorch是否一样。
+5. 检查数据精度，验证TensorRT文件输出结果和pytorch是否一样。
 ```bash
-python3 tensorrt_export/trt_check_no_past.py
 python3 tensorrt_export/trt_check_with_past.py 
 ```
 - 经检测误差较大，需要优化一下，通过一些算子来合并Onnx

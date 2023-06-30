@@ -74,16 +74,15 @@ def run_cpu_onnx_inference(onnx_path, input_path: str, output_path):
         for name in input_names:
             try:
                 past_key_values = getattr(input_dict, name).data.cpu().numpy()
-                io_binding.bind_cpu_input(
-                    name,
-                    past_key_values
-                )
-
             except Exception:
                 past_key_values = np.zeros(
                     [0, input_ids.shape[1], 2, 128],
                     dtype=one_present_key.dtype
                 )
+            io_binding.bind_cpu_input(
+                name,
+                past_key_values
+            )
 
 
         output_name = [
@@ -143,7 +142,7 @@ def run_cpu_onnx_inference(onnx_path, input_path: str, output_path):
 if __name__ == "__main__":
     input_path1 = os.path.join(output_dir, "pt_input1.pt")
     output_path1 = os.path.join(output_dir, "pt_output1.pt")
-    run_cpu_onnx_inference(onnx_path_no_cache, input_path1, output_path1)
+    run_cpu_onnx_inference(onnx_path_with_cache, input_path1, output_path1)
     print("\n")
     input_path2 = os.path.join(output_dir, "pt_input2.pt")
     output_path2 = os.path.join(output_dir, "pt_output2.pt")
